@@ -126,21 +126,36 @@ CREATE OR ALTER PROCEDURE DeliverOrder
 @SelectedOrderId int = NULL
 AS
 BEGIN
-UPDATE Storage SET Storage.Amount -= O.Amount
-FROM [Order] AS O
+UPDATE [Order] SET [Order].Delivered = 1
+WHERE [Order].Id = @SelectedOrderId;
+
+UPDATE Storage SET Storage.Amount -=
+(
+	SELECT [Order].Amount
+	FROM [Order]
+	WHERE [Order].Id = @SelectedOrderId
+)
+FROM [Order]
 WHERE Storage.ProductId =
 (
 	SELECT [Order].ProductId FROM [Order]
 	WHERE [Order].Id = @SelectedOrderId
 )
+-- Problem: Kommer att uppdatera rätt Storage.ProductId men inte ifrån rätt rad i [Order]. Kommer att ta första [Order]-raden.
+-- Lösning: Denna måste också välja den rad ([Order].Id) som man valt i @SelectedOrderId.
+-- Lösning: Inner join efter FROM? Innan WHERE?
+-- SELECT efter +=?
 END
 -- Ska sätta [Order].Delivered till true.
 -- Måste också kolla ifall [Order].Delivered är false innan man ändrar värdet.
 -- WHERE: Vilka rows som ska uppdateras.
 
 -- Vill läsa [Order].Id någonstans..
-EXEC UpdateStorage @SelectedOrderId = 3;
-
+EXEC DeliverOrder @SelectedOrderId = 3;
+UPDATE [Order] SET [Order].Delivered = 0;
+UPDATE [Order] SET [Order].Amount = 10 WHERE Id = 1;
+SELECT * FROM [Order];
+SELECT * FROM Storage;
 
 ------- Test:
 SELECT * FROM Cart;
