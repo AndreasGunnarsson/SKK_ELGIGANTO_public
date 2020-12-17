@@ -15,6 +15,7 @@ DROP TABLE IF EXISTS Reserved;
 DROP TABLE IF EXISTS Storage;
 DROP TABLE IF EXISTS Product;
 
+DROP TRIGGER IF EXISTS TR_StorageTransaction;
 DROP PROC IF EXISTS DeliverOrder;
 
 CREATE TABLE Category (Id int PRIMARY KEY IDENTITY(1,1), [Name] varchar (50) NOT NULL UNIQUE);
@@ -141,17 +142,13 @@ WHERE Storage.ProductId =
 	SELECT [Order].ProductId FROM [Order]
 	WHERE [Order].Id = @SelectedOrderId
 )
--- Problem: Kommer att uppdatera rätt Storage.ProductId men inte ifrån rätt rad i [Order]. Kommer att ta första [Order]-raden.
--- Lösning: Denna måste också välja den rad ([Order].Id) som man valt i @SelectedOrderId.
--- Lösning: Inner join efter FROM? Innan WHERE?
--- SELECT efter +=?
 END
 -- Ska sätta [Order].Delivered till true.
--- Måste också kolla ifall [Order].Delivered är false innan man ändrar värdet.
--- WHERE: Vilka rows som ska uppdateras.
+-- Måste också kolla ifall [Order].Delivered är false innan man ändrar värdet. Om det inte är sant skicka tillbaka ett felmeddelande (se vecka 11? OUTPUT?).
 
 -- Vill läsa [Order].Id någonstans..
 EXEC DeliverOrder @SelectedOrderId = 3;
+-- Test:
 UPDATE [Order] SET [Order].Delivered = 0;
 UPDATE [Order] SET [Order].Amount = 10 WHERE Id = 1;
 SELECT * FROM [Order];
@@ -162,6 +159,31 @@ SELECT * FROM Cart;
 -- SELECT * FROM Reserved;
 SELECT * FROM [Order];
 SELECT * FROM Storage;
+
+----------------------------- Trigger för Transaction.
+
+CREATE OR ALTER TRIGGER TR_StorageTransaction ON Storage
+FOR UPDATE
+AS
+BEGIN
+	DECLARE @insertReason INT = 1;
+	INSERT INTO StorageTransaction (ProductId, Amount, ReasonId) SELECT ProductID, Amount, @insertReason FROM inserted;
+
+	-- Problem: Vi måste ge olika reasons beroende på hur UPDATE:n skett:
+		-- Delivery, Return eller Stock Adjustment.
+	-- Lösning: Skulle kunna spara värdet på sista TransactionReason någonstans? När man t.ex. kör DeliverOrder så sparas TransactionReason 1 någonstans..
+
+	SELECT * FROM inserted;
+	SELECT * FROM deleted;
+--	SELECT * FROM TransactionReason;
+END
+-- Använd OUTPUT?
+
+-- CREATE TABLE StorageTransaction (Id int PRIMARY KEY IDENTITY(1,1), ProductId int, [Time] datetime DEFAULT GETDATE(), Amount int NOT NULL, ReasonId int NOT NULL);
+UPDATE Storage SET Amount = 67 WHERE Id = 5;
+SELECT * FROM Storage;
+SELECT * FROM StorageTransaction;
+SELECT * FROM TransactionReason;
 
 ----------------------------- Saker som ska implementeras nedan:
 -- Reservera artikel i lagret.
@@ -190,7 +212,7 @@ SELECT * FROM Product;
 SELECT * FROM [Order];
 SELECT * FROM Costumer;
 SELECT * FROM Cart;
-SELECT * FROM Reserved;
+--SELECT * FROM Reserved;
 SELECT * FROM Storage;
 SELECT * FROM StorageTransaction;
 SELECT * FROM TransactionReason;
