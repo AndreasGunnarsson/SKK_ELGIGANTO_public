@@ -4,7 +4,7 @@ ALTER TABLE [Order] DROP CONSTRAINT FK_Order_Costumer;
 ALTER TABLE [Order] DROP CONSTRAINT FK_Order_Product;
 ALTER TABLE Storage DROP CONSTRAINT FK_Storage_Product;
 --ALTER TABLE Storage DROP CONSTRAINT FK_Storage_Reserved;
-DROP TABLE IF EXISTS Popularity;
+--DROP TABLE IF EXISTS Popularity;
 DROP TABLE IF EXISTS Cart;
 DROP TABLE IF EXISTS StorageTransaction;
 DROP TABLE IF EXISTS TransactionReason;
@@ -24,10 +24,14 @@ DROP PROC IF EXISTS NewTransaction;
 
 CREATE TABLE Category (Id int PRIMARY KEY IDENTITY(1,1), [Name] varchar (50) NOT NULL UNIQUE);
 --CREATE TABLE Popularity (Id int PRIMARY KEY IDENTITY(1,1), ProductId int NOT NULL UNIQUE, Popularity int NOT NULL DEFAULT 0);
-CREATE TABLE Popularity (Id int PRIMARY KEY IDENTITY(1,1), Popularity int NOT NULL DEFAULT 0);
-CREATE TABLE Product (Id int PRIMARY KEY IDENTITY(1,1), PopularityId int NOT NULL UNIQUE, CategoryId int NOT NULL, [Name] varchar(50) NOT NULL, Price float(53) NOT NULL CONSTRAINT CHK_Product_Price CHECK (Price > 0));
+--CREATE TABLE Popularity (Id int PRIMARY KEY IDENTITY(1,1), Popularity int NOT NULL DEFAULT 0);
+--CREATE TABLE Product (Id int PRIMARY KEY IDENTITY(1,1), PopularityId int NOT NULL UNIQUE, CategoryId int NOT NULL, [Name] varchar(50) NOT NULL, Price float(53) NOT NULL CONSTRAINT CHK_Product_Price CHECK (Price > 0));
+CREATE TABLE Product (Id int PRIMARY KEY IDENTITY(1,1), PopularityScore int NOT NULL DEFAULT 0, CategoryId int NOT NULL, [Name] varchar(50) NOT NULL, Price float(53) NOT NULL CONSTRAINT CHK_Product_Price CHECK (Price > 0));
 CREATE TABLE Costumer (Id int PRIMARY KEY IDENTITY(1,1), [Name] varchar(50) NOT NULL, Mail varchar(50) NOT NULL UNIQUE, [Address] varchar(50) NOT NULL);
-CREATE TABLE [Order] (Id int PRIMARY KEY IDENTITY(1,1), ProductId int NOT NULL, CostumerId int NOT NULL, Ordernumber int NOT NULL DEFAULT CAST(RAND() * 100 AS int), Amount int NOT NULL, Delivered bit DEFAULT 0);
+--CREATE TABLE [Order] (Id int PRIMARY KEY IDENTITY(1,1), ProductId int NOT NULL, CostumerId int NOT NULL, Ordernumber int NOT NULL DEFAULT CAST(RAND() * 100 AS int), Amount int NOT NULL, Delivered bit DEFAULT 0);
+CREATE TABLE [Order] (Id int PRIMARY KEY IDENTITY(1,1), ProductId int NOT NULL, CostumerId int NOT NULL, Ordernumber int NOT NULL DEFAULT CAST(RAND() * 100 AS int), Amount int NOT NULL, Delivered bit DEFAULT 0, ReturnAmount int, CONSTRAINT CHK_Order_ReturnAmount CHECK (ReturnAmount > 0 AND ReturnAmount <= Amount));		-- Instead of using a CONSTRAINT on just one column it's used on the whole table. Needed if we want to compare values from different columns
+--SELECT * FROM [Order];
+--UPDATE [Order] SET ReturnAmount = 4 WHERE Id = 2;
 CREATE TABLE Cart (Id int PRIMARY KEY IDENTITY(1,1), CostumerId int NOT NULL, ProductId int NOT NULL, Amount int NOT NULL DEFAULT 1 CONSTRAINT CHK_Cart_Amount CHECK (Amount > 0));
 --CREATE TABLE Reserved (Id int PRIMARY KEY IDENTITY(1,1), OrderId int NOT NULL, StorageId int NOT NULL);					-- Testa utan, se förklaring nedan.
 --CREATE TABLE Storage (Id int PRIMARY KEY IDENTITY(1,1), ProductId int NOT NULL, Amount int NOT NULL, ReservedId int);		-- ReservedId ska inte vara här!
@@ -44,6 +48,7 @@ SELECT * FROM Product
 INSERT INTO Product (CategoryId, [Name], Price) VALUES (1, 'fef', 0.1)
 INSERT INTO Popularity (ProductId) VALUES (12);			-- Test for constraint */
 
+-- TODO: Ta bort [Order].Delivered? Svar: Nej, behövs för att personalen ska kunna sätta en order som levererad.
 -- TODO: Döp om Popularity.Popularity till Score eller ta bort hela Popularity-tabellen.
 -- TODO: Problemet med Cart och [Order] är att de endast tillåter en Product per session.
 -- TODO: Borde Product ha en PopularityId istället för tvärt om? Som det är nu så måste en Product inte ha en Popularity (pga. att FK:n går andra hållet). Detta är fel.
@@ -56,6 +61,7 @@ INSERT INTO Popularity (ProductId) VALUES (12);			-- Test for constraint */
 -- TODO: Indexes.
 -- TODO: Kolla över typerna och optimera dem.
 -- TODO: Lägg till "user level" i Costumer och döp om den till "User". Detta för att kunna ge olika privilegier (en admin kan t.ex. lägga till produkter medan en vanlig användare endast kan beställa).
+-- TODO: Gör snyggare Product.Ordernumber.
 
 -- Vad fyller Reserved för funktion: Håller reda på ett värde för ett specifikt Storage.Id som är kopplat till ett Order.Id.
 -- Enda syftet är att kunna koppla "Order.Amount" med ett "Storage.Amount".
@@ -64,7 +70,7 @@ INSERT INTO Popularity (ProductId) VALUES (12);			-- Test for constraint */
 -- Nackdelar med att ta bort Reserved-tabellen: Kan potentiellt vara en prestanda-förlust? Kanske går att lösa med index i rätt kolumner. Om man ska kolla saldon måste man också kolla igenom alla ordrar (levererade och icke-levererade) istället för att bara kolla reserved-tabellen. Kanske går att lösa med ett index?
 
 ALTER TABLE Product ADD CONSTRAINT FK_Product_Category FOREIGN KEY (CategoryId) REFERENCES Category(Id);
-ALTER TABLE Product ADD CONSTRAINT FK_Product_Popularity FOREIGN KEY (PopularityId) REFERENCES Popularity(Id);
+--ALTER TABLE Product ADD CONSTRAINT FK_Product_Popularity FOREIGN KEY (PopularityId) REFERENCES Popularity(Id);
 --ALTER TABLE Popularity ADD CONSTRAINT FK_Popularity_Product FOREIGN KEY (ProductId) REFERENCES Product(Id);
 ALTER TABLE [Order] ADD CONSTRAINT FK_Order_Product FOREIGN KEY (ProductId) REFERENCES Product(Id);
 ALTER TABLE [Order] ADD CONSTRAINT FK_Order_Costumer FOREIGN KEY (CostumerId) REFERENCES Costumer(Id);
@@ -78,7 +84,7 @@ ALTER TABLE Storage ADD CONSTRAINT FK_Storage_Product FOREIGN KEY (ProductId) RE
 ALTER TABLE StorageTransaction ADD CONSTRAINT FK_StorageTrasaction_Product FOREIGN KEY (ProductId) REFERENCES Product(Id);
 ALTER TABLE StorageTransaction ADD CONSTRAINT FK_StorageTransaction_Reason FOREIGN KEY (ReasonId) REFERENCES TransactionReason(Id);
 
--- TODO: ON DELETE CASCADE kan vara bra någonstans? Borde vara på Category ifall man nu skulle ta bort en hel kategori någon gång..
+-- TODO: ON DELETE CASCADE kan vara bra någonstans? Borde vara på Category ifall man nu skulle ta bort en hel kategori någon gång (men man vill inte köra DELETE utan hade varit grymmare ifall man satta NULL som Product.CategoryId).
 
 -- Problem med FK_Storage_Reserved: Går endast att ha en Reserved per produkt. Är bättre att sköta deetta helt i "Reserved".
 -- Lägg till tabell för personal?
@@ -90,16 +96,16 @@ ALTER TABLE StorageTransaction ADD CONSTRAINT FK_StorageTransaction_Reason FOREI
 INSERT INTO Category ([Name]) VALUES ('GPU'), ('CPU'), ('RAM');
 INSERT INTO TransactionReason (Reason) VALUES ('Delivery'), ('Return'), ('Stock adjustment');
 -- Förutbestämd testdata:
-INSERT INTO Popularity (Popularity) VALUES (10), (15), (20), (40), (35), (30), (100), (200), (150);
-INSERT INTO Product (CategoryId, PopularityId, [Name], Price) VALUES (1, 1, 'Voodoo 2', 399.99), (1, 2, 'Radeon', 349.99), (1, 3, 'GeForce', 449.99);
-INSERT INTO Product (CategoryId, PopularityId, [Name], Price) VALUES (2, 4, 'AMD 100 MHz', 299.99), (2, 5, 'Intel 300 MHz', 599.99), (2, 6, 'Intel 333 MHz', 699.99);
-INSERT INTO Product (CategoryId, PopularityId, [Name], Price) VALUES (3, 7, 'Noname 128 MB', 49.99), (3, 8, 'Intel 512 MB', 199.99), (3, 9, 'MyMemory 1024 MB', 249.99);
+--INSERT INTO Popularity (Popularity) VALUES (10), (15), (20), (40), (35), (30), (100), (200), (150);
+INSERT INTO Product (CategoryId, PopularityScore, [Name], Price) VALUES (1, 10, 'Voodoo 2', 399.99), (1, 15, 'Radeon', 349.99), (1, 20, 'GeForce', 449.99);
+INSERT INTO Product (CategoryId, PopularityScore, [Name], Price) VALUES (2, 40, 'AMD 100 MHz', 299.99), (2, 35, 'Intel 300 MHz', 599.99), (2, 30, 'Intel 333 MHz', 699.99);
+INSERT INTO Product (CategoryId, PopularityScore, [Name], Price) VALUES (3, 100, 'Noname 128 MB', 49.99), (3, 200, 'Intel 512 MB', 199.99), (3, 150, 'MyMemory 1024 MB', 249.99);
 --INSERT INTO Popularity (ProductId, Popularity) VALUES (1, 10), (2, 15), (3, 20), (4, 40), (5, 35), (6, 30), (7, 100), (8, 200), (9, 150);
 --DELETE FROM Product;
 --SELECT * FROM Popularity;
 --SELECT * FROM Product;
-INSERT INTO Costumer ([Name], Mail, [Address]) VALUES ('Boris', 'boris@mail.com', 'Hemgatan 2');
-INSERT INTO Costumer ([Name], Mail, [Address]) VALUES ('Greger', 'greger@mail.com', 'Husvägen 3');
+INSERT INTO Costumer ([Name], Mail, [Address]) VALUES ('Boris', 'boris@mail.com', 'Borisgatan 2');
+INSERT INTO Costumer ([Name], Mail, [Address]) VALUES ('Greger', 'greger@mail.com', 'Gregervägen 3');
 INSERT INTO Storage (ProductId, Amount) VALUES (1, 10), (2, 20), (3, 50), (4, 60), (5, 70), (6, 100), (7, 100), (8, 100), (9, 100);
 
 -- Händelseförlopp:
@@ -116,10 +122,9 @@ CREATE OR ALTER PROCEDURE ListProducts
 @SelectedCategoryId int = NULL
 AS
 BEGIN
-	SELECT Product.Id, [Name], Price, Popularity.Popularity FROM Product			-- TODO: Ta bort Popularity.Popularity, endast för debug.
-	INNER JOIN Popularity ON Popularity.Id = Product.PopularityId
+	SELECT Product.Id, [Name], Price, PopularityScore FROM Product			-- TODO: Ta bort Popularity.Popularity, endast för debug.
 	WHERE CategoryId = @SelectedCategoryId
-	ORDER BY Popularity.Popularity DESC;
+	ORDER BY PopularityScore DESC;
 END
 
 EXEC ListProducts @SelectedCategoryId = 3;
@@ -133,6 +138,7 @@ EXEC ListProducts @SelectedCategoryId = 3;
 	-- Bonus: Option för att sortera efter andra saker en popularity.
 ----------------------------------------------------- UpdatePopularity SP:
 -- Ska köras då användaren använder ProductDetail, lägger till i ChangeCart eller kör CheckoutCart.
+-- Tar ett värde som en artikel ska uppdateras med.
 ----------------------------------------------------- SearchProduct SP:
 -- Sökfunktion: Sök på något och få tillbaka de Products som matchar.
 	-- Sök-toggle: Visa endast de som finns tillgängliga i lager.
@@ -150,7 +156,7 @@ BEGIN
 	WHERE Product.Id = @SelectedProductId;
 END
 
--- TODO: Hur hanterar man "Reserved" (även kallat "Delivered" i [Order])?
+-- TODO: Hur hanterar man "Reserved" (måste kolla [Order].ReturnAmount)?
 
 EXEC ProductDetail @SelectedProductId = 5;
 -- Produktdetaljer. Skriv in ett Product.Id.
@@ -164,10 +170,9 @@ EXEC ProductDetail @SelectedProductId = 5;
 ----------------------------------------------------- CheckoutCart SP:
 -- Copis the values from Cart to [Order].
 -- Remove the Cart.
------------------------------------------------------ Deliver order SP:
--- [Order].Delivered = 1
--- Calls the "NewTransaction" SP.
--- UPDATE Storage.Amount
+----------------------------------------------------- UpdateOrder SP:
+-- Används ifall en kund vill returnera en vara.
+-- Går att uppdatera [Order].ReturnAmount med denna.
 ----------------------------------------------------- AddRemoveProduct SP:
 -- Lägger till/tar bort en Product. Måste också ta bort dess Popularity i samma veva.
 -- Kan behöva en ON DELETE CASCADE på FK:n i tabeller här..
@@ -177,6 +182,13 @@ EXEC ProductDetail @SelectedProductId = 5;
 -- Lägger till ny användare.
 ----------------------------------------------------- UpdateCostumer SP:
 -- Uppdaterar info för en användare.
+
+
+----------------------------------------------------- Deliver order SP:
+-- Används av personalen.
+-- [Order].Delivered = 1
+-- Calls the "NewTransaction" SP.
+-- UPDATE Storage.Amount
 
 -- DELETE FROM Reserved WHERE Id = 1;								-- Ta bort reservation.
 INSERT INTO [Order] (ProductId, CostumerId, Amount) VALUES (1, 1, 1);			-- Testdata för att leverera order.
@@ -266,25 +278,36 @@ SELECT * FROM Storage;
 ----------------------------------------------------- Storage adjustment SP:
 CREATE OR ALTER PROCEDURE StorageAdjustment
 @SelectedProductId int = NULL,
-@NewAmount int = NULL
+@NewAmount int = NULL,
+@IsIncDec bit = 1
 AS
 BEGIN
-IF @SelectedProductId IS NOT NULL AND @NewAmount IS NOT NULL
+IF @SelectedProductId IS NOT NULL AND @NewAmount IS NOT NULL AND @IsIncDec = 1
 BEGIN
 	PRINT 'Valid';
 	EXEC NewTransaction @ProductId = @SelectedProductId, @Amount = @NewAmount;
 	-- Problem: Since we write a direct value to SET the Newtransaction.Amount is wrong; this should show the difference.
+	-- NewTransaction hantterar endast diff-värden. Om man vill ha något annat än en diff måste man skriva detta i denna SP (StorageAdjustment).
 	-- Problem: We need error checking. We cant set a stock Amount that's below 0.
-	UPDATE Storage SET Storage.Amount = @NewAmount WHERE Storage.ProductId = @SelectedProductId;
+	UPDATE Storage SET Storage.Amount += @NewAmount WHERE Storage.ProductId = @SelectedProductId;
+END
+ELSE IF @SelectedProductId IS NOT NULL AND @NewAmount IS NOT NULL AND @IsIncDec = 0
+BEGIN
+	PRINT 'Valid2'
+	-- TODO: Will use a "full" value that's not just an increment/decrement.
+	-- We must first get the diff from the current Storage.Amount because that's what will be sent to the NewTransaction SP.
+	-- Behöver en Variabel som sparar värdet och en if-sats beroende på ifall värdet är positivt eller negativt.
 END
 ELSE
 	PRINT 'Not valid';
 END
 
 
-EXEC StorageAdjustment @SelectedProductId = 1, @NewAmount = 2;
+EXEC StorageAdjustment @SelectedProductId = 2, @NewAmount = 2, @IsIncDec = 1;
 SELECT * FROM StorageTransaction;
 SELECT * FROM Storage;
+
+-- TODO: Borde skriva vilken användare som gjorde förändringen.
 ----------------------------------------------------- Transaction SP:
 CREATE OR ALTER PROCEDURE NewTransaction
 --@TransactionReason int = NULL,
@@ -297,17 +320,17 @@ BEGIN
 	IF @OrderId IS NOT NULL
 	BEGIN
 		PRINT 'OrderId is NOT NULL';
-		IF (SELECT [Order].Delivered FROM [Order] WHERE [Order].Id = @OrderId) = 1
+		IF (SELECT [Order].ReturnAmount FROM [Order] WHERE [Order].Id = @OrderId) IS NULL
 		BEGIN
-			PRINT 'Delivered';
+			PRINT 'Delivery (not a Return)';
 			INSERT INTO StorageTransaction (ProductId, Amount, ReasonId)
-			SELECT ProductID, Amount, 1 FROM [Order] WHERE [Order].Id = @OrderId;
+			SELECT ProductID, (Amount * -1), 1 FROM [Order] WHERE [Order].Id = @OrderId;
 		END
-		ELSE IF (SELECT [Order].Delivered FROM [Order] WHERE [Order].Id = @OrderId) = 0
+		ELSE IF (SELECT [Order].ReturnAmount FROM [Order] WHERE [Order].Id = @OrderId) IS NOT NULL
 		BEGIN
-			PRINT 'Not delivered, return';
+			PRINT 'Return';
 			INSERT INTO StorageTransaction (ProductId, Amount, ReasonId)
-			SELECT ProductID, Amount, 2 FROM [Order] WHERE [Order].Id = @OrderId;
+			SELECT ProductID, ReturnAmount, 2 FROM [Order] WHERE [Order].Id = @OrderId;
 		END
 	END
 	ELSE IF @ProductId IS NOT NULL AND @Amount IS NOT NULL
@@ -316,8 +339,7 @@ BEGIN
 		INSERT INTO StorageTransaction (ProductId, Amount, ReasonId)
 		VALUES (@ProductId, @Amount, 3);
 		-- Problem: Måste på något sätt veta ifall det är ett negativt eller positivt värde som skrvits in; StorageTransaction ska hålla en differens!
-		-- Lösning: Antingen så skriver man in positiva/negative värden i Amount eller så baserar man det på vad ReasonId är.
-			-- Saldojustering 
+		-- Lösningen just nu: Denna SP tar ett +/--värde som läggs till i StorageTransaction. Det är SP:n som kallar på NewTransaction som får lösa eventuella omvandlingar.
 	END
 	ELSE
 	BEGIN
@@ -326,9 +348,11 @@ BEGIN
 END
 
 
-EXEC NewTransaction @OrderId = 1;
-EXEC NewTransaction @ProductId = 2, @Amount = 3;
-UPDATE [Order] SET [Order].Delivered = 1 WHERE Id = 2;
+EXEC NewTransaction @OrderId = 2;
+EXEC NewTransaction @ProductId = 2, @Amount = 10;
+
+-- Test:
+UPDATE [Order] SET [Order].ReturnAmount = 2 WHERE Id = 2;
 SELECT * FROM [Order];
 SELECT * FROM StorageTransaction;
 -- Måste köras innan själva förändringen i lagersaldo skett.
@@ -398,12 +422,12 @@ SELECT * FROM TransactionReason; */
 
 ------------------------- SELECT:s for all tables:
 SELECT * FROM Category;
-SELECT * FROM Popularity;
+--SELECT * FROM Popularity;
 SELECT * FROM Product;
 SELECT * FROM [Order];
 SELECT * FROM Costumer;
 SELECT * FROM Cart;
--- SELECT * FROM Reserved;
+--SELECT * FROM Reserved;
 SELECT * FROM Storage;
 SELECT * FROM StorageTransaction;
 SELECT * FROM TransactionReason;
