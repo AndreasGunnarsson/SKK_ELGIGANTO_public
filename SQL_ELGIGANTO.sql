@@ -18,6 +18,7 @@ DROP TABLE IF EXISTS Product;
 -- DROP TRIGGER IF EXISTS TR_StorageTransaction;
 DROP PROC IF EXISTS ListProducts;
 DROP PROC IF EXISTS ProductDetail;
+DROP PROC IF EXISTS SearchProduct;
 DROP PROC IF EXISTS DeliverOrder;
 DROP PROC IF EXISTS StorageAdjustment;
 DROP PROC IF EXISTS NewTransaction;
@@ -97,8 +98,8 @@ INSERT INTO Category ([Name]) VALUES ('GPU'), ('CPU'), ('RAM');
 INSERT INTO TransactionReason (Reason) VALUES ('Delivery'), ('Return'), ('Stock adjustment');
 -- Förutbestämd testdata:
 --INSERT INTO Popularity (Popularity) VALUES (10), (15), (20), (40), (35), (30), (100), (200), (150);
-INSERT INTO Product (CategoryId, PopularityScore, [Name], Price) VALUES (1, 10, 'Voodoo 2', 399.99), (1, 15, 'Radeon', 349.99), (1, 20, 'GeForce', 449.99);
-INSERT INTO Product (CategoryId, PopularityScore, [Name], Price) VALUES (2, 40, 'AMD 100 MHz', 299.99), (2, 35, 'Intel 300 MHz', 599.99), (2, 30, 'Intel 333 MHz', 699.99);
+INSERT INTO Product (CategoryId, PopularityScore, [Name], Price) VALUES (1, 10, 'Voodoo 2', 399.99), (1, 20, 'GeForce', 449.99), (1, 15, 'Radeon', 349.99);
+INSERT INTO Product (CategoryId, PopularityScore, [Name], Price) VALUES (2, 35, 'Intel 300 MHz', 599.99), (2, 40, 'AMD 100 MHz', 299.99), (2, 30, 'Intel 333 MHz', 699.99);
 INSERT INTO Product (CategoryId, PopularityScore, [Name], Price) VALUES (3, 100, 'Noname 128 MB', 49.99), (3, 200, 'Intel 512 MB', 199.99), (3, 150, 'MyMemory 1024 MB', 249.99);
 --INSERT INTO Popularity (ProductId, Popularity) VALUES (1, 10), (2, 15), (3, 20), (4, 40), (5, 35), (6, 30), (7, 100), (8, 200), (9, 150);
 --DELETE FROM Product;
@@ -125,25 +126,93 @@ BEGIN
 	SELECT Product.Id, [Name], Price, PopularityScore FROM Product			-- TODO: Ta bort Popularity.Popularity, endast för debug.
 	WHERE CategoryId = @SelectedCategoryId
 	ORDER BY PopularityScore DESC;
+--	OFFSET 2 ROWS FETCH NEXT 1 ROWS ONLY;		-- Se länken om "pagination".
 END
 
 EXEC ListProducts @SelectedCategoryId = 3;
 
 -- TODO: Felhantering, vad händer ifall man skriver in en kategori som inte existerar?
-
+-- https://www.sqlshack.com/pagination-in-sql-server/		- Kan vara bra ifall man har väldigt många sidor med produkter.. Behöver mer testdata först!
 -- SELECT * FROM Product;
 -- SELECT * FROM 
 
 -- Visa produkter baserat på vald Category (sorterad efter Popularity).
 	-- Bonus: Option för att sortera efter andra saker en popularity.
------------------------------------------------------ UpdatePopularity SP:
--- Ska köras då användaren använder ProductDetail, lägger till i ChangeCart eller kör CheckoutCart.
--- Tar ett värde som en artikel ska uppdateras med.
------------------------------------------------------ SearchProduct SP:
+	----------------------------------------------------- SearchProduct SP:
+CREATE OR ALTER PROCEDURE SearchProduct
+@SearchString varchar(50) = NULL,
+@CategoryId int = NULL,
+@IsAvailable bit = 0,		-- 0 = Shows Product even if there are none in Stock. 1 = The Product need to be a Stock.Amount > 0.
+@SortColumn int = 0,		-- 0 = Popularity, 2 = Price, 3 = Name.
+@SortOrder int = 0			-- 0 = ASC, 1 = DESC.
+AS
+BEGIN
+/*	DECLARE @SortOrder2 varchar(50);
+	IF @SortOrder = 1 AND @SortColumn = 0
+		SET @SortOrder2 = '-Product.PopularityScore';
+	ELSE IF @SortOrder = 1 AND @SortColumn = 1
+		SET @SortOrder2 = '-Product.Price';
+	ELSE IF @SortOrder = 1 AND @SortColumn = 2
+		SET @SortOrder2 = '-Product.[Name]';
+	ELSE IF @SortOrder = 0 AND @SortColumn = 0
+		SET @SortOrder2 = 'Product.PopularityScore';
+	ELSE IF @SortOrder = 0 AND @SortColumn = 1
+		SET @SortOrder2 = 'Product.Price';
+	ELSE IF @SortOrder = 0 AND @SortColumn = 2
+		SET @SortOrder2 = 'Product.[Name]';
+	
+	PRINT @SortOrder2; */
+/*	SET @SortOrder2
+	CASE WHEN @SortOrder = 1 AND @SortColumn = 0 THEN '-Product.PopularityScore' END,
+	CASE WHEN @SortOrder = 1 AND @SortColumn = 1 THEN '-Product.Price' END,
+	CASE WHEN @SortOrder = 1 AND @SortColumn = 2 THEN '-Product.[Name]' END,
+	CASE WHEN @SortOrder = 0 AND @SortColumn = 0 THEN 'Product.PopularityScore' END, 
+	CASE WHEN @SortOrder = 0 AND @SortColumn = 1 THEN 'Product.Price' END,
+	CASE WHEN @SortOrder = 0 AND @SortColumn = 2 THEN 'Product.[Name]' END; */
+
+
+	IF @CategoryId IS NOT NULL OR @CategoryId IS NULL
+	BEGIN
+		PRINT 'CategoryId NOT NULL';
+		IF @IsAvailable = 1
+		BEGIN
+			PRINT 'Available 1';
+			SELECT * FROM Product
+			INNER JOIN Storage ON Storage.ProductId = Product.Id
+			WHERE [Name] LIKE '%' + @SearchString + '%' AND CategoryId = @CategoryId AND Storage.Amount > 0
+--			ORDER BY @SortOrder2;
+			ORDER BY
+				CASE WHEN @SortOrder = 1 AND @SortColumn = 0 THEN Product.PopularityScore END DESC,
+				CASE WHEN @SortOrder = 1 AND @SortColumn = 1 THEN Product.Price END DESC,
+				CASE WHEN @SortOrder = 1 AND @SortColumn = 2 THEN Product.[Name] END DESC,
+				CASE WHEN @SortOrder = 0 AND @SortColumn = 0 THEN Product.PopularityScore END, 
+				CASE WHEN @SortOrder = 0 AND @SortColumn = 1 THEN Product.Price END,
+				CASE WHEN @SortOrder = 0 AND @SortColumn = 2 THEN Product.[Name] END;
+		END
+		ELSE IF @IsAvailable = 0
+		BEGIN
+			PRINT 'Available 0';
+		END
+	END
+	ELSE
+	BEGIN
+		PRINT 'ELSE';
+		SELECT * FROM Product WHERE [Name] LIKE '%' + @SearchString + '%';
+	END
+END
+
+EXEC SearchProduct @SearchString = 'tel';
+EXEC SearchProduct @SearchString = '', @CategoryId = 2, @IsAvailable = 1, @SortColumn = 0, @SortOrder = 1;
+EXEC SearchProduct @SearchString = '', @IsAvailable = 1, @SortColumn = 0, @SortOrder = 1;
+SELECT * FROM Product;
 -- Sökfunktion: Sök på något och få tillbaka de Products som matchar.
 	-- Sök-toggle: Visa endast de som finns tillgängliga i lager.
 	-- Sortering: popularitet, pris och namn.
 	-- Bonus: Lägg till popularitet till något ifall man söker på det.
+	-- Bonus: Man kan skriva in * och det översätts till %!
+----------------------------------------------------- UpdatePopularity SP:
+-- Ska köras då användaren använder ProductDetail, lägger till i ChangeCart eller kör CheckoutCart.
+-- Tar ett värde som en artikel ska uppdateras med.
 ----------------------------------------------------- ProductDetail SP:
 CREATE OR ALTER PROCEDURE ProductDetail
 @SelectedProductId int = NULL
@@ -161,12 +230,12 @@ END
 EXEC ProductDetail @SelectedProductId = 5;
 -- Produktdetaljer. Skriv in ett Product.Id.
 	-- Ska visa Name, Category, Price och lagerstatus.
------------------------------------------------------ ListCartContent SP:
--- List the content in a cart with a specific Id.
 ----------------------------------------------------- ChangeCart SP:
 -- If the ProductId already is in the cart the amount will increment with 1.
 -- If we decrement the Amount and it reaches 0 the Cart is removed.
 -- Add a feature to remove the card instantly (withouh having to reach 0).
+----------------------------------------------------- ListCartContent SP:
+-- List the content in a cart with a specific Id.
 ----------------------------------------------------- CheckoutCart SP:
 -- Copis the values from Cart to [Order].
 -- Remove the Cart.
