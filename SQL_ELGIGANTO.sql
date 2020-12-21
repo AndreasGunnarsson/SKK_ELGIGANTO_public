@@ -17,11 +17,14 @@ DROP TABLE IF EXISTS Product;
 
 -- DROP TRIGGER IF EXISTS TR_StorageTransaction;
 DROP PROC IF EXISTS ListProducts;
+DROP PROC IF EXISTS UpdatePopularity;
 DROP PROC IF EXISTS ProductDetail;
 DROP PROC IF EXISTS SearchProduct;
 DROP PROC IF EXISTS DeliverOrder;
 DROP PROC IF EXISTS StorageAdjustment;
 DROP PROC IF EXISTS NewTransaction;
+DROP PROC IF EXISTS AddToCart;
+DROP PROC IF EXISTS NewUser;
 
 CREATE TABLE Category (Id int PRIMARY KEY IDENTITY(1,1), [Name] varchar (50) NOT NULL UNIQUE);
 --CREATE TABLE Popularity (Id int PRIMARY KEY IDENTITY(1,1), ProductId int NOT NULL UNIQUE, Popularity int NOT NULL DEFAULT 0);
@@ -120,117 +123,129 @@ DELETE FROM Cart WHERE Id = 1;									-- Tar bort Id:t från Cart-tabellen. */
 
 ----------------------------------------------------- ListProducts SP:
 CREATE OR ALTER PROCEDURE ListProducts
-@SelectedCategoryId int = NULL
+@SelectedCategoryId int = NULL,
+@RowsToSkip int = 0,
+@RowsAmount int = 3
 AS
 BEGIN
 	SELECT Product.Id, [Name], Price, PopularityScore FROM Product			-- TODO: Ta bort Popularity.Popularity, endast för debug.
 	WHERE CategoryId = @SelectedCategoryId
-	ORDER BY PopularityScore DESC;
---	OFFSET 2 ROWS FETCH NEXT 1 ROWS ONLY;		-- Se länken om "pagination".
+	ORDER BY PopularityScore DESC
+	OFFSET @RowsToSkip ROWS FETCH NEXT @RowsAmount ROWS ONLY;		-- Pagination. OFFSET = The number of rows to skip. FETCH = The amount of rows after the OFFSET that's returned.
 END
 
-EXEC ListProducts @SelectedCategoryId = 3;
+-- Test:
+EXEC ListProducts @SelectedCategoryId = 1, @RowsToSkip = 1, @RowsAmount = 2;
 
--- TODO: Felhantering, vad händer ifall man skriver in en kategori som inte existerar?
 -- https://www.sqlshack.com/pagination-in-sql-server/		- Kan vara bra ifall man har väldigt många sidor med produkter.. Behöver mer testdata först!
 -- SELECT * FROM Product;
 -- SELECT * FROM 
 
+-- TODO: Hur hanterar man att ingen @SelectedCategoryId väljs? Ska SP:n returnera en felkod?
 -- Visa produkter baserat på vald Category (sorterad efter Popularity).
 	-- Bonus: Option för att sortera efter andra saker en popularity.
 	----------------------------------------------------- SearchProduct SP:
 CREATE OR ALTER PROCEDURE SearchProduct
-@SearchString varchar(50) = NULL,
-@CategoryId int = NULL,
-@IsAvailable bit = 0,		-- 0 = Shows Product even if there are none in Stock. 1 = The Product need to be a Stock.Amount > 0.
+@SearchString varchar(50) = NULL,	-- NULL = Empty string/all Products.
+@CategoryId int = NULL,		-- NULL = All categories.
+@IsAvailable bit = 0,		-- 0 = Shows Product even if there are none in Stock. 1 = The Product need to be at Stock.Amount > 0.
 @SortColumn int = 0,		-- 0 = Popularity, 2 = Price, 3 = Name.
-@SortOrder int = 0			-- 0 = ASC, 1 = DESC.
+@SortOrder bit = 0,			-- 0 = ASC, 1 = DESC.
+@RowsToSkip int = 0,		-- The number of rows (from the top of the serch result) to exclude.
+@RowsAmount int = 3			-- Number of rows after @RowsToSkip to include.
 AS
 BEGIN
-/*	DECLARE @SortOrder2 varchar(50);
-	IF @SortOrder = 1 AND @SortColumn = 0
-		SET @SortOrder2 = '-Product.PopularityScore';
-	ELSE IF @SortOrder = 1 AND @SortColumn = 1
-		SET @SortOrder2 = '-Product.Price';
-	ELSE IF @SortOrder = 1 AND @SortColumn = 2
-		SET @SortOrder2 = '-Product.[Name]';
-	ELSE IF @SortOrder = 0 AND @SortColumn = 0
-		SET @SortOrder2 = 'Product.PopularityScore';
-	ELSE IF @SortOrder = 0 AND @SortColumn = 1
-		SET @SortOrder2 = 'Product.Price';
-	ELSE IF @SortOrder = 0 AND @SortColumn = 2
-		SET @SortOrder2 = 'Product.[Name]';
-	
-	PRINT @SortOrder2; */
-/*	SET @SortOrder2
-	CASE WHEN @SortOrder = 1 AND @SortColumn = 0 THEN '-Product.PopularityScore' END,
-	CASE WHEN @SortOrder = 1 AND @SortColumn = 1 THEN '-Product.Price' END,
-	CASE WHEN @SortOrder = 1 AND @SortColumn = 2 THEN '-Product.[Name]' END,
-	CASE WHEN @SortOrder = 0 AND @SortColumn = 0 THEN 'Product.PopularityScore' END, 
-	CASE WHEN @SortOrder = 0 AND @SortColumn = 1 THEN 'Product.Price' END,
-	CASE WHEN @SortOrder = 0 AND @SortColumn = 2 THEN 'Product.[Name]' END; */
-
-
-	IF @CategoryId IS NOT NULL OR @CategoryId IS NULL
+/*	IF @CategoryId IS NULL
 	BEGIN
-		PRINT 'CategoryId NOT NULL';
-		IF @IsAvailable = 1
-		BEGIN
-			PRINT 'Available 1';
-			SELECT * FROM Product
-			INNER JOIN Storage ON Storage.ProductId = Product.Id
-			WHERE [Name] LIKE '%' + @SearchString + '%' AND CategoryId = @CategoryId AND Storage.Amount > 0
---			ORDER BY @SortOrder2;
-			ORDER BY
-				CASE WHEN @SortOrder = 1 AND @SortColumn = 0 THEN Product.PopularityScore END DESC,
-				CASE WHEN @SortOrder = 1 AND @SortColumn = 1 THEN Product.Price END DESC,
-				CASE WHEN @SortOrder = 1 AND @SortColumn = 2 THEN Product.[Name] END DESC,
-				CASE WHEN @SortOrder = 0 AND @SortColumn = 0 THEN Product.PopularityScore END, 
-				CASE WHEN @SortOrder = 0 AND @SortColumn = 1 THEN Product.Price END,
-				CASE WHEN @SortOrder = 0 AND @SortColumn = 2 THEN Product.[Name] END;
-		END
-		ELSE IF @IsAvailable = 0
-		BEGIN
-			PRINT 'Available 0';
-		END
+		PRINT 'CategoryId IS NULL';
+		SELECT *
+--		INTO #temp_table
+		FROM Product
+		WHERE [Name] LIKE '%' + @SearchString + '%'
 	END
-	ELSE
-	BEGIN
-		PRINT 'ELSE';
-		SELECT * FROM Product WHERE [Name] LIKE '%' + @SearchString + '%';
-	END
+
+	ELSE IF @CategoryId IS NOT NULL
+	BEGIN */
+--	PRINT 'SearchString: ' + @SearchString + ' CategoryId: ' + CAST (@CategoryId AS varchar(50)) + ' IsAvailable: ' + CAST(@IsAvailable AS varchar(50)) + ' SortColumn: ' + CAST(@SortColumn AS varchar(50)) + ' SortOrder: ' + CAST(@SortOrder AS varchar(50));
+
+	SELECT Product.Id, Product.[Name], Product.Price
+	FROM Product
+	INNER JOIN Storage ON Storage.ProductId = Product.Id
+	WHERE
+		[Name] LIKE '%' + @SearchString + '%'
+		AND (@IsAvailable = 0 OR(@IsAvailable = 1 AND Storage.Amount > 0))		-- Antingen måste @IsAvailable vara 0 OR så måste @IsAvailable vara 1 AND Storage.Amount > 0
+		AND (@CategoryId IS NULL OR(@CategoryId = Product.CategoryId))
+	ORDER BY
+		CASE WHEN @SortOrder = 1 AND @SortColumn = 0 THEN Product.PopularityScore END DESC,
+		CASE WHEN @SortOrder = 1 AND @SortColumn = 1 THEN Product.Price END DESC,
+		CASE WHEN @SortOrder = 1 AND @SortColumn = 2 THEN Product.[Name] END DESC,
+		CASE WHEN @SortOrder = 0 AND @SortColumn = 0 THEN Product.PopularityScore END, 
+		CASE WHEN @SortOrder = 0 AND @SortColumn = 1 THEN Product.Price END,
+		CASE WHEN @SortOrder = 0 AND @SortColumn = 2 THEN Product.[Name] END
+		OFFSET @RowsToSkip ROWS FETCH NEXT @RowsAmount ROWS ONLY;
 END
 
-EXEC SearchProduct @SearchString = 'tel';
-EXEC SearchProduct @SearchString = '', @CategoryId = 2, @IsAvailable = 1, @SortColumn = 0, @SortOrder = 1;
+
+-- Test:
+-- 0 = Popularity, 2 = Price, 3 = Name.
+EXEC SearchProduct @SearchString = '', @CategoryId = 1;
+EXEC SearchProduct @SearchString = '', @IsAvailable = 1, @SortColumn = 2, @SortOrder = 3;
+EXEC SearchProduct @SearchString = '', @CategoryId = 2, @IsAvailable = 12, @SortColumn = 2, @SortOrder = 1, @RowsToSkip = 0, @RowsAmount = 3;
 EXEC SearchProduct @SearchString = '', @IsAvailable = 1, @SortColumn = 0, @SortOrder = 1;
 SELECT * FROM Product;
 -- Sökfunktion: Sök på något och få tillbaka de Products som matchar.
 	-- Sök-toggle: Visa endast de som finns tillgängliga i lager.
 	-- Sortering: popularitet, pris och namn.
-	-- Bonus: Lägg till popularitet till något ifall man söker på det.
+	-- Bonus: Kolla upp "pagination".
+	-- Bonus: Lägg till popularitet till något ifall man söker på det. Behöver göra en UPDATE på alla Product som matchar sökningen.
 	-- Bonus: Man kan skriva in * och det översätts till %!
 ----------------------------------------------------- UpdatePopularity SP:
+CREATE OR ALTER PROCEDURE UpdatePopularity
+@AddedScore int = NULL,
+@ProductId int = NULL
+AS
+BEGIN
+	IF @AddedScore IS NOT NULL AND @ProductId IS NOT NULL
+		UPDATE Product SET Product.PopularityScore += @AddedScore WHERE Product.Id = @ProductId;
+END
+
+-- Test:
+EXEC UpdatePopularity @AddedScore = 2, @ProductId = 8;
+SELECT * FROM Product;
+-- Problem: Det hela är rätt så flawed. Man kan bara spamma vissa saker (som SP:n ProductDetail) för att scoren ska öka. Borde vara någon cooldown.
 -- Ska köras då användaren använder ProductDetail, lägger till i ChangeCart eller kör CheckoutCart.
+-- Bonus: Uppdatera score beroende på senaste datumet som Scoren uppdaterades på? Verkligare scenario är att detta kanske körs en gång om dagen (nattid) för att uppdatera alla produkters score.
 -- Tar ett värde som en artikel ska uppdateras med.
+-- Använd en egen tabell för variabler. Kan t.ex. spara LastPopularityUpdate och Last
 ----------------------------------------------------- ProductDetail SP:
 CREATE OR ALTER PROCEDURE ProductDetail
 @SelectedProductId int = NULL
 AS
 BEGIN
-	-- TODO: Kör SP för att uppdatera Popularity för vald Product.
 	SELECT Product.Id, Category.[Name], Product.[Name], Product.Price, Storage.Amount FROM Product
 	INNER JOIN Storage ON Storage.ProductId = Product.Id
 	INNER JOIN Category ON Category.Id = Product.CategoryId
 	WHERE Product.Id = @SelectedProductId;
+	EXEC UpdatePopularity @ProductId = @SelectedProductId, @AddedScore = 1;
 END
 
 -- TODO: Hur hanterar man "Reserved" (måste kolla [Order].ReturnAmount)?
 
 EXEC ProductDetail @SelectedProductId = 5;
+SELECT * FROM Product;
 -- Produktdetaljer. Skriv in ett Product.Id.
 	-- Ska visa Name, Category, Price och lagerstatus.
------------------------------------------------------ ChangeCart SP:
+----------------------------------------------------- AddToCart SP:
+CREATE OR ALTER PROCEDURE AddToCart
+@CurrentUserId int = NULL,
+@ProductId int = NULL,
+@ProductAmount int = NULL
+AS
+BEGIN
+	-- TODO: Add logic here.
+	SELECT * FROM Cart;
+END
+
 -- If the ProductId already is in the cart the amount will increment with 1.
 -- If we decrement the Amount and it reaches 0 the Cart is removed.
 -- Add a feature to remove the card instantly (withouh having to reach 0).
@@ -247,12 +262,16 @@ EXEC ProductDetail @SelectedProductId = 5;
 -- Kan behöva en ON DELETE CASCADE på FK:n i tabeller här..
 ----------------------------------------------------- UpdateProduct SP:
 -- Updaterar pris och description på en Product.
------------------------------------------------------ NewCostumer SP:
+-- Kan också lägga till en ny? Byt namn.
+----------------------------------------------------- NewUser SP:
+--CREATE OR ALTER PROCEDURE NewUser
+--@UserName
+-- TODO: Fortsätt här!
+--SELECT * FROM Costumer
 -- Lägger till ny användare.
+-- Om man ska ha flera "nivår" borde kanske dessa vara separerade. Känns inte helt smart att blanda kunder med användare som har högre privelegier?
 ----------------------------------------------------- UpdateCostumer SP:
 -- Uppdaterar info för en användare.
-
-
 ----------------------------------------------------- Deliver order SP:
 -- Används av personalen.
 -- [Order].Delivered = 1
