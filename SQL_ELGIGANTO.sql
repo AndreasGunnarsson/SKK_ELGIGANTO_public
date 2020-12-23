@@ -123,12 +123,12 @@ DELETE FROM Cart WHERE Id = 1;									-- Tar bort Id:t från Cart-tabellen. */
 
 ----------------------------------------------------- ListProducts SP:
 CREATE OR ALTER PROCEDURE ListProducts
-@SelectedCategoryId int = NULL,
+@SelectedCategoryId int,
 @RowsToSkip int = 0,
 @RowsAmount int = 3
 AS
 BEGIN
-	SELECT Product.Id, [Name], Price, PopularityScore FROM Product			-- TODO: Ta bort Popularity.Popularity, endast för debug.
+	SELECT Product.Id, [Name], Price FROM Product
 	WHERE CategoryId = @SelectedCategoryId
 	ORDER BY PopularityScore DESC
 	OFFSET @RowsToSkip ROWS FETCH NEXT @RowsAmount ROWS ONLY;		-- Pagination. OFFSET = The number of rows to skip. FETCH = The amount of rows after the OFFSET that's returned.
@@ -137,13 +137,15 @@ END
 -- Test:
 EXEC ListProducts @SelectedCategoryId = 1, @RowsToSkip = 1, @RowsAmount = 2;
 
--- https://www.sqlshack.com/pagination-in-sql-server/		- Kan vara bra ifall man har väldigt många sidor med produkter.. Behöver mer testdata först!
+
 -- SELECT * FROM Product;
 -- SELECT * FROM 
 
+-- TODO: Testa pagnation med mer testdata. Detta är mer intressant att använda i klienten.
 -- TODO: Hur hanterar man att ingen @SelectedCategoryId väljs? Ska SP:n returnera en felkod?
 -- Visa produkter baserat på vald Category (sorterad efter Popularity).
 	-- Bonus: Option för att sortera efter andra saker en popularity.
+	-- Bonus: Möjlighet att välja flera kategorier. Använd den då istället en SELECT på den; sortera i klienten.
 	----------------------------------------------------- SearchProduct SP:
 CREATE OR ALTER PROCEDURE SearchProduct
 @SearchString varchar(50) = NULL,	-- NULL = Empty string/all Products.
@@ -155,17 +157,6 @@ CREATE OR ALTER PROCEDURE SearchProduct
 @RowsAmount int = 3			-- Number of rows after @RowsToSkip to include.
 AS
 BEGIN
-/*	IF @CategoryId IS NULL
-	BEGIN
-		PRINT 'CategoryId IS NULL';
-		SELECT *
---		INTO #temp_table
-		FROM Product
-		WHERE [Name] LIKE '%' + @SearchString + '%'
-	END
-
-	ELSE IF @CategoryId IS NOT NULL
-	BEGIN */
 --	PRINT 'SearchString: ' + @SearchString + ' CategoryId: ' + CAST (@CategoryId AS varchar(50)) + ' IsAvailable: ' + CAST(@IsAvailable AS varchar(50)) + ' SortColumn: ' + CAST(@SortColumn AS varchar(50)) + ' SortOrder: ' + CAST(@SortOrder AS varchar(50));
 
 	SELECT Product.Id, Product.[Name], Product.Price
@@ -173,7 +164,7 @@ BEGIN
 	INNER JOIN Storage ON Storage.ProductId = Product.Id
 	WHERE
 		[Name] LIKE '%' + @SearchString + '%'
-		AND (@IsAvailable = 0 OR(@IsAvailable = 1 AND Storage.Amount > 0))		-- Antingen måste @IsAvailable vara 0 OR så måste @IsAvailable vara 1 AND Storage.Amount > 0
+		AND (@IsAvailable = 0 OR(@IsAvailable = 1 AND Storage.Amount > 0))		-- Antingen måste @IsAvailable vara 0 OR så måste @IsAvailable vara 1 AND Storage.Amount > 0.
 		AND (@CategoryId IS NULL OR(@CategoryId = Product.CategoryId))
 	ORDER BY
 		CASE WHEN @SortOrder = 1 AND @SortColumn = 0 THEN Product.PopularityScore END DESC,
@@ -194,15 +185,13 @@ EXEC SearchProduct @SearchString = '', @CategoryId = 2, @IsAvailable = 12, @Sort
 EXEC SearchProduct @SearchString = '', @IsAvailable = 1, @SortColumn = 0, @SortOrder = 1;
 SELECT * FROM Product;
 -- Sökfunktion: Sök på något och få tillbaka de Products som matchar.
-	-- Sök-toggle: Visa endast de som finns tillgängliga i lager.
-	-- Sortering: popularitet, pris och namn.
-	-- Bonus: Kolla upp "pagination".
 	-- Bonus: Lägg till popularitet till något ifall man söker på det. Behöver göra en UPDATE på alla Product som matchar sökningen.
 	-- Bonus: Man kan skriva in * och det översätts till %!
+	-- Bonus: Möjlighet att söka på flera kategorier (@CategoryId) än en.
 ----------------------------------------------------- UpdatePopularity SP:
 CREATE OR ALTER PROCEDURE UpdatePopularity
-@AddedScore int = NULL,
-@ProductId int = NULL
+@AddedScore int,
+@ProductId int
 AS
 BEGIN
 	IF @AddedScore IS NOT NULL AND @ProductId IS NOT NULL
@@ -210,13 +199,14 @@ BEGIN
 END
 
 -- Test:
-EXEC UpdatePopularity @AddedScore = 2, @ProductId = 8;
+EXEC UpdatePopularity @AddedScore = 1, @ProductId = 8;
 SELECT * FROM Product;
--- Problem: Det hela är rätt så flawed. Man kan bara spamma vissa saker (som SP:n ProductDetail) för att scoren ska öka. Borde vara någon cooldown.
+
 -- Ska köras då användaren använder ProductDetail, lägger till i ChangeCart eller kör CheckoutCart.
+-- Problem: Det hela är rätt så flawed. Man kan bara spamma vissa saker (som SP:n ProductDetail) för att scoren ska öka. Borde vara någon cooldown.
 -- Bonus: Uppdatera score beroende på senaste datumet som Scoren uppdaterades på? Verkligare scenario är att detta kanske körs en gång om dagen (nattid) för att uppdatera alla produkters score.
--- Tar ett värde som en artikel ska uppdateras med.
--- Använd en egen tabell för variabler. Kan t.ex. spara LastPopularityUpdate och Last
+	-- Använd en egen tabell för "globala variabler". Kan t.ex. spara LastPopularityUpdate och LastProductIdUpdated (för att användas i en StorageTransaction-trigger).
+	-- Detta borde göras i backend-klienten.
 ----------------------------------------------------- ProductDetail SP:
 CREATE OR ALTER PROCEDURE ProductDetail
 @SelectedProductId int = NULL
@@ -237,18 +227,45 @@ SELECT * FROM Product;
 	-- Ska visa Name, Category, Price och lagerstatus.
 ----------------------------------------------------- AddToCart SP:
 CREATE OR ALTER PROCEDURE AddToCart
-@CurrentUserId int = NULL,
-@ProductId int = NULL,
-@ProductAmount int = NULL
+@CurrentUserId int,					-- When no "=" is used an argument with a value is required (the argument can still use NULL as a value).
+@ProductId int,
+@ProductAmount int
 AS
 BEGIN
-	-- TODO: Add logic here.
-	SELECT * FROM Cart;
+	IF @CurrentUserId IS NOT NULL AND @ProductId IS NOT NULL AND @ProductAmount IS NOT NULL
+	BEGIN
+		IF @ProductId <> (SELECT ProductId FROM Cart WHERE Cart.CostumerId = @CurrentUserId) OR (SELECT ProductId FROM Cart) IS NULL		-- TODO: Måste lägga till en ny rad ifall användaren existerar.. Kanske går att fixa i INSERT:en nedan?
+		BEGIN
+			PRINT 'HERE1';
+			INSERT INTO Cart (CostumerId, ProductId, Amount) VALUES (@CurrentUserId, @ProductId, @ProductAmount);
+		END
+		ELSE IF @ProductId = (SELECT ProductId FROM Cart WHERE Cart.CostumerId = @CurrentUserId)
+		BEGIN
+			PRINT 'HERE2';
+			UPDATE Cart SET Cart.Amount += @ProductAmount WHERE Cart.ProductId = @ProductId AND Cart.CostumerId = @CurrentUserId;
+		END
+	END
+	ELSE
+		PRINT 'Some value is null!';
 END
 
+-- Test:
+EXEC AddToCart @CurrentUserId = 2, @ProductId = 2, @ProductAmount = 1;
+EXEC AddToCart @CurrentUserId = 1, @ProductId = NULL, @ProductAmount = 2;
+SELECT * FROM Cart;
+DELETE FROM Cart;
+INSERT INTO Cart (CostumerId, ProductId, Amount) VALUES (1, 3, 3);
+-- TODO: Ska ta bort Cart ifall Amount <= 0.
+-- @CurrentUserId är ännu en sak man skulle vilja hantera som en "global variabel". Är därmed bättre att hantera i backend-klienten.
 -- If the ProductId already is in the cart the amount will increment with 1.
 -- If we decrement the Amount and it reaches 0 the Cart is removed.
 -- Add a feature to remove the card instantly (withouh having to reach 0).
+
+-- Kolla dessa:
+-- https://docs.microsoft.com/en-us/sql/t-sql/statements/create-procedure-transact-sql?view=sql-server-ver15
+-- https://docs.microsoft.com/en-us/sql/relational-databases/in-memory-oltp/a-guide-to-query-processing-for-memory-optimized-tables?view=sql-server-ver15
+-- https://docs.microsoft.com/en-us/sql/relational-databases/in-memory-oltp/creating-natively-compiled-stored-procedures?view=sql-server-ver15
+-- Bättre prestanda och man kan sätta en parameter som "NOT NULL".
 ----------------------------------------------------- ListCartContent SP:
 -- List the content in a cart with a specific Id.
 ----------------------------------------------------- CheckoutCart SP:
