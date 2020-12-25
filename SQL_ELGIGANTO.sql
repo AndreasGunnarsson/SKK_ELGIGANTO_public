@@ -36,7 +36,7 @@ CREATE TABLE Costumer (Id int PRIMARY KEY IDENTITY(1,1), [Name] varchar(50) NOT 
 CREATE TABLE [Order] (Id int PRIMARY KEY IDENTITY(1,1), ProductId int NOT NULL, CostumerId int NOT NULL, Ordernumber int NOT NULL DEFAULT CAST(RAND() * 100 AS int), Amount int NOT NULL, Delivered bit DEFAULT 0, ReturnAmount int, CONSTRAINT CHK_Order_ReturnAmount CHECK (ReturnAmount > 0 AND ReturnAmount <= Amount));		-- Instead of using a CONSTRAINT on just one column it's used on the whole table. Needed if we want to compare values from different columns
 --SELECT * FROM [Order];
 --UPDATE [Order] SET ReturnAmount = 4 WHERE Id = 2;
-CREATE TABLE Cart (Id int PRIMARY KEY IDENTITY(1,1), CostumerId int NOT NULL, ProductId int NOT NULL, Amount int NOT NULL DEFAULT 1 CONSTRAINT CHK_Cart_Amount CHECK (Amount > 0));
+CREATE TABLE Cart (Id int PRIMARY KEY IDENTITY(1,1), CostumerId int NOT NULL, ProductId int NOT NULL, Amount int NOT NULL DEFAULT 1 CONSTRAINT CHK_Cart_Amount CHECK (Amount >= 0));
 --CREATE TABLE Reserved (Id int PRIMARY KEY IDENTITY(1,1), OrderId int NOT NULL, StorageId int NOT NULL);					-- Testa utan, se förklaring nedan.
 --CREATE TABLE Storage (Id int PRIMARY KEY IDENTITY(1,1), ProductId int NOT NULL, Amount int NOT NULL, ReservedId int);		-- ReservedId ska inte vara här!
 CREATE TABLE Storage (Id int PRIMARY KEY IDENTITY(1,1), ProductId int NOT NULL, Amount int NOT NULL);
@@ -52,6 +52,7 @@ SELECT * FROM Product
 INSERT INTO Product (CategoryId, [Name], Price) VALUES (1, 'fef', 0.1)
 INSERT INTO Popularity (ProductId) VALUES (12);			-- Test for constraint */
 
+-- TODO: Förklara "Amount int NOT NULL DEFAULT 1 CONSTRAINT CHK_Cart_Amount CHECK (Amount >= 0))" och relationen med SP:n AddToCart.
 -- TODO: Ta bort [Order].Delivered? Svar: Nej, behövs för att personalen ska kunna sätta en order som levererad.
 -- TODO: Döp om Popularity.Popularity till Score eller ta bort hela Popularity-tabellen.
 -- TODO: Problemet med Cart och [Order] är att de endast tillåter en Product per session.
@@ -191,18 +192,21 @@ SELECT * FROM Product;
 ----------------------------------------------------- UpdatePopularity SP:
 CREATE OR ALTER PROCEDURE UpdatePopularity
 @AddedScore int,
-@ProductId int
+@ProductId int,
+@ProductAmount int = 1
 AS
 BEGIN
 	IF @AddedScore IS NOT NULL AND @ProductId IS NOT NULL
-		UPDATE Product SET Product.PopularityScore += @AddedScore WHERE Product.Id = @ProductId;
+		UPDATE Product SET Product.PopularityScore += (@AddedScore * @ProductAmount) WHERE Product.Id = @ProductId;
 END
 
 -- Test:
 EXEC UpdatePopularity @AddedScore = 1, @ProductId = 8;
 SELECT * FROM Product;
 
--- Ska köras då användaren använder ProductDetail, lägger till i ChangeCart eller kör CheckoutCart.
+-- TODO: Måste kunna ta amount också, detta för att man ska kunna multiplicera med antalet produkter som lagts till. Detta är ett designval. Vet inte om det är bästa popularitets-algoritmen.
+
+-- Ska köras då användaren använder ProductDetail, lägger till i AddToCart eller kör CheckoutCart.
 -- Problem: Det hela är rätt så flawed. Man kan bara spamma vissa saker (som SP:n ProductDetail) för att scoren ska öka. Borde vara någon cooldown.
 -- Bonus: Uppdatera score beroende på senaste datumet som Scoren uppdaterades på? Verkligare scenario är att detta kanske körs en gång om dagen (nattid) för att uppdatera alla produkters score.
 	-- Använd en egen tabell för "globala variabler". Kan t.ex. spara LastPopularityUpdate och LastProductIdUpdated (för att användas i en StorageTransaction-trigger).
@@ -234,25 +238,45 @@ AS
 BEGIN
 	IF @CurrentUserId IS NOT NULL AND @ProductId IS NOT NULL AND @ProductAmount IS NOT NULL
 	BEGIN
-		IF @ProductId <> (SELECT ProductId FROM Cart WHERE Cart.CostumerId = @CurrentUserId) OR (SELECT ProductId FROM Cart) IS NULL		-- TODO: Måste lägga till en ny rad ifall användaren existerar.. Kanske går att fixa i INSERT:en nedan?
+	-- Måste kolla:
+		-- Gör insert ifall användaren ELLER produkten inte existerar i Cart-tabellen.
+		IF @ProductId NOT IN (SELECT ProductId FROM Cart WHERE Cart.CostumerId = @CurrentUserId) OR @CurrentUserId NOT IN (SELECT CostumerId FROM Cart WHERE Cart.CostumerId = @CurrentUserId)		-- We have to use IN instead of = because when = is used the subquery (SELECT) is expected to return only one row.
 		BEGIN
-			PRINT 'HERE1';
+			PRINT 'INSERT!';
 			INSERT INTO Cart (CostumerId, ProductId, Amount) VALUES (@CurrentUserId, @ProductId, @ProductAmount);
+			EXEC UpdatePopularity @ProductId = @ProductId, @AddedScore = 5, @ProductAmount = @ProductAmount;
 		END
-		ELSE IF @ProductId = (SELECT ProductId FROM Cart WHERE Cart.CostumerId = @CurrentUserId)
+		ELSE IF (SELECT Amount + @ProductAmount FROM Cart WHERE Cart.ProductId = @ProductId AND Cart.CostumerId = @CurrentUserId) = 0
 		BEGIN
-			PRINT 'HERE2';
+			PRINT 'DELETE!';
+			DELETE FROM Cart WHERE Cart.ProductId = @ProductId AND Cart.CostumerId = @CurrentUserId;
+			EXEC UpdatePopularity @ProductId = @ProductId, @AddedScore = 5, @ProductAmount = @ProductAmount;
+			--UpdatePopularity
+		END
+		ELSE IF @ProductId IN (SELECT ProductId FROM Cart WHERE Cart.CostumerId = @CurrentUserId)
+		BEGIN
+			PRINT 'UPDATE!';
 			UPDATE Cart SET Cart.Amount += @ProductAmount WHERE Cart.ProductId = @ProductId AND Cart.CostumerId = @CurrentUserId;
+			EXEC UpdatePopularity @ProductId = @ProductId, @AddedScore = 5, @ProductAmount = @ProductAmount;
+			--UpdatePopularity
 		END
 	END
 	ELSE
-		PRINT 'Some value is null!';
+		PRINT 'Error: One or more arguments are NULL.';
 END
+-- TODO: Använd en trigger på Cart som tar bort raden ifall Cart.Amount <= 0?
+-- TODO: Måste buggtesta. Är möjligt att få negativ PopularityScore även fast ingen vara läggs till eller tas bort från Cart. T.ex. då man kör en AddToCart när Cart är tom från början.
 
 -- Test:
-EXEC AddToCart @CurrentUserId = 2, @ProductId = 2, @ProductAmount = 1;
-EXEC AddToCart @CurrentUserId = 1, @ProductId = NULL, @ProductAmount = 2;
+-- Testa MINUS!
+EXEC AddToCart @CurrentUserId = 2, @ProductId = 3, @ProductAmount = -10;
 SELECT * FROM Cart;
+SELECT * FROM Product;
+
+SELECT * FROM Costumer;
+EXEC AddToCart @CurrentUserId = 1, @ProductId = NULL, @ProductAmount = 2;
+
+INSERT INTO Cart (CostumerId, ProductId, Amount) VALUES (3, 5, 1);
 DELETE FROM Cart;
 INSERT INTO Cart (CostumerId, ProductId, Amount) VALUES (1, 3, 3);
 -- TODO: Ska ta bort Cart ifall Amount <= 0.
@@ -275,6 +299,7 @@ INSERT INTO Cart (CostumerId, ProductId, Amount) VALUES (1, 3, 3);
 -- Används ifall en kund vill returnera en vara.
 -- Går att uppdatera [Order].ReturnAmount med denna.
 ----------------------------------------------------- AddRemoveProduct SP:
+-- Måste också hantera produkter som t.ex. ligger i Cart.
 -- Lägger till/tar bort en Product. Måste också ta bort dess Popularity i samma veva.
 -- Kan behöva en ON DELETE CASCADE på FK:n i tabeller här..
 ----------------------------------------------------- UpdateProduct SP:
