@@ -25,6 +25,8 @@ DROP PROC IF EXISTS StorageAdjustment;
 DROP PROC IF EXISTS NewTransaction;
 DROP PROC IF EXISTS AddToCart;
 DROP PROC IF EXISTS NewUser;
+DROP PROC IF EXISTS ListCartContent;
+DROP PROC IF EXISTS CheckoutCart;
 
 CREATE TABLE Category (Id int PRIMARY KEY IDENTITY(1,1), [Name] varchar (50) NOT NULL UNIQUE);
 --CREATE TABLE Popularity (Id int PRIMARY KEY IDENTITY(1,1), ProductId int NOT NULL UNIQUE, Popularity int NOT NULL DEFAULT 0);
@@ -174,7 +176,7 @@ BEGIN
 		CASE WHEN @SortOrder = 0 AND @SortColumn = 0 THEN Product.PopularityScore END, 
 		CASE WHEN @SortOrder = 0 AND @SortColumn = 1 THEN Product.Price END,
 		CASE WHEN @SortOrder = 0 AND @SortColumn = 2 THEN Product.[Name] END
-		OFFSET @RowsToSkip ROWS FETCH NEXT @RowsAmount ROWS ONLY;
+	OFFSET @RowsToSkip ROWS FETCH NEXT @RowsAmount ROWS ONLY;
 END
 
 
@@ -242,20 +244,20 @@ BEGIN
 		-- Gör insert ifall användaren ELLER produkten inte existerar i Cart-tabellen.
 		IF @ProductId NOT IN (SELECT ProductId FROM Cart WHERE Cart.CostumerId = @CurrentUserId) OR @CurrentUserId NOT IN (SELECT CostumerId FROM Cart WHERE Cart.CostumerId = @CurrentUserId)		-- We have to use IN instead of = because when = is used the subquery (SELECT) is expected to return only one row.
 		BEGIN
-			PRINT 'INSERT!';
+--			PRINT 'INSERT!';
 			INSERT INTO Cart (CostumerId, ProductId, Amount) VALUES (@CurrentUserId, @ProductId, @ProductAmount);
 			EXEC UpdatePopularity @ProductId = @ProductId, @AddedScore = 5, @ProductAmount = @ProductAmount;
 		END
 		ELSE IF (SELECT Amount + @ProductAmount FROM Cart WHERE Cart.ProductId = @ProductId AND Cart.CostumerId = @CurrentUserId) = 0
 		BEGIN
-			PRINT 'DELETE!';
+--			PRINT 'DELETE!';
 			DELETE FROM Cart WHERE Cart.ProductId = @ProductId AND Cart.CostumerId = @CurrentUserId;
 			EXEC UpdatePopularity @ProductId = @ProductId, @AddedScore = 5, @ProductAmount = @ProductAmount;
 			--UpdatePopularity
 		END
 		ELSE IF @ProductId IN (SELECT ProductId FROM Cart WHERE Cart.CostumerId = @CurrentUserId)
 		BEGIN
-			PRINT 'UPDATE!';
+--			PRINT 'UPDATE!';
 			UPDATE Cart SET Cart.Amount += @ProductAmount WHERE Cart.ProductId = @ProductId AND Cart.CostumerId = @CurrentUserId;
 			EXEC UpdatePopularity @ProductId = @ProductId, @AddedScore = 5, @ProductAmount = @ProductAmount;
 			--UpdatePopularity
@@ -291,8 +293,36 @@ INSERT INTO Cart (CostumerId, ProductId, Amount) VALUES (1, 3, 3);
 -- https://docs.microsoft.com/en-us/sql/relational-databases/in-memory-oltp/creating-natively-compiled-stored-procedures?view=sql-server-ver15
 -- Bättre prestanda och man kan sätta en parameter som "NOT NULL".
 ----------------------------------------------------- ListCartContent SP:
+CREATE OR ALTER PROCEDURE ListCartContent
+@CurrentUser int
+AS
+BEGIN
+	SELECT * FROM Cart WHERE Cart.CostumerId = @CurrentUser;
+END
+
+-- TODO: Borde JOINa tabeller för att skriva ut namn på åt minsone produkten.
+-- Test:
+EXEC ListCartContent @CurrentUser = 2;
+EXEC AddToCart @CurrentUserId = 1, @ProductId = 1, @ProductAmount = 2;
+EXEC AddToCart @CurrentUserId = 2, @ProductId = 3, @ProductAmount = 2;
+EXEC AddToCart @CurrentUserId = 1, @ProductId = 2, @ProductAmount = 2;
+EXEC AddToCart @CurrentUserId = 2, @ProductId = 4, @ProductAmount = 2;
+SELECT * FROM Cart;
 -- List the content in a cart with a specific Id.
 ----------------------------------------------------- CheckoutCart SP:
+CREATE OR ALTER PROCEDURE CheckoutCart
+@CurrentUserId int
+AS
+BEGIN
+	INSERT INTO [Order] (ProductId, CostumerId, Amount) SELECT CostumerId, ProductId, Amount FROM Cart WHERE Cart.CostumerId = @CurrentUserId;
+	DELETE FROM Cart WHERE Cart.CostumerId = @CurrentUserId;
+END
+
+-- Test:
+EXEC CheckoutCart @CurrentUserId = 1;
+
+SELECT * FROM Cart;
+SELECT * FROM [Order];
 -- Copis the values from Cart to [Order].
 -- Remove the Cart.
 ----------------------------------------------------- UpdateOrder SP:
@@ -477,6 +507,7 @@ BEGIN
 	END
 END
 
+-- TODO: Se över if-satser och NULL-värden i parametrarna.
 
 EXEC NewTransaction @OrderId = 2;
 EXEC NewTransaction @ProductId = 2, @Amount = 10;
