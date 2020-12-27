@@ -27,6 +27,8 @@ DROP PROC IF EXISTS AddToCart;
 DROP PROC IF EXISTS NewUser;
 DROP PROC IF EXISTS ListCartContent;
 DROP PROC IF EXISTS CheckoutCart;
+DROP PROC IF EXISTS CreateNewUser;
+DROP PROC IF EXISTS UpdateCostumer;
 
 CREATE TABLE Category (Id int PRIMARY KEY IDENTITY(1,1), [Name] varchar (50) NOT NULL UNIQUE);
 --CREATE TABLE Popularity (Id int PRIMARY KEY IDENTITY(1,1), ProductId int NOT NULL UNIQUE, Popularity int NOT NULL DEFAULT 0);
@@ -194,6 +196,54 @@ SELECT * FROM Product;
 	-- Bonus: Lägg till popularitet till något ifall man söker på det. Behöver göra en UPDATE på alla Product som matchar sökningen.
 	-- Bonus: Man kan skriva in * och det översätts till %!
 	-- Bonus: Möjlighet att söka på flera kategorier (@CategoryId) än en.
+----------------------------------------------------- CreateNewUser SP:
+CREATE OR ALTER PROCEDURE CreateNewUser
+@UserName varchar(50),
+@Email varchar(50),
+@Address varchar(50)
+AS
+BEGIN
+	INSERT INTO Costumer ([Name], Mail, [Address]) VALUES (@UserName, @Email, @Address);
+END
+
+-- Tets:
+EXEC CreateNewUser @UserName = 'Klabbe', @Email = 'Klabbe@klabbmail.com', @Address = 'Bollvägen 12A';
+SELECT * FROM Costumer;
+
+-- Kolla @.
+--CREATE OR ALTER PROCEDURE NewUser
+--@UserName
+-- TODO: Fortsätt här!
+--SELECT * FROM Costumer
+-- Lägger till ny användare.
+-- Om man ska ha flera "nivår" borde kanske dessa vara separerade. Känns inte helt smart att blanda kunder med användare som har högre privelegier?
+----------------------------------------------------- UpdateCostumer SP:
+-- Uppdaterar info för en användare.
+CREATE OR ALTER PROCEDURE UpdateCostumer
+@SelectedCostumerId int,
+@UpdatedName varchar(50) = NULL,
+@UpdatedEmail varchar(50) = NULL,
+@UpdatedAddress varchar(50) = NULL,
+@DeleteAccount bit = 0
+AS
+BEGIN
+	IF @DeleteAccount = 0
+	BEGIN
+		UPDATE Costumer SET
+			Costumer.[Name] = ISNULL(@UpdatedName, (SELECT [Name] FROM Costumer WHERE Costumer.Id = @SelectedCostumerId)),
+			Costumer.Mail = ISNULL(@UpdatedEmail, (SELECT Mail FROM Costumer WHERE Costumer.Id = @SelectedCostumerId)),
+			Costumer.[Address] = ISNULL(@UpdatedAddress, (SELECT [Address] FROM Costumer WHERE Costumer.Id = @SelectedCostumerId))
+		WHERE Costumer.Id = @SelectedCostumerId
+	END
+	ELSE IF @DeleteAccount = 1
+		DELETE FROM Costumer WHERE Costumer.Id = @SelectedCostumerId
+END
+
+-- TODO: ISNULL är fullösning. Problemet är att man gör en update även fast man bara kopierar samma värde som var innan.
+-- TODO: Borde man ta bort alla Orders som har med ett account att göra ifall man tar bort kontot?
+SELECT * FROM Costumer;
+EXEC UpdateCostumer @SelectedCostumerId = 2, @DeleteAccount = 1;
+EXEC UpdateCostumer @SelectedCostumerId = 2, @UpdatedName = 'Seeeeeeeeeeeeeeger', @UpdatedEmail = 'mail@mail.com', @UpdatedAddress = 'Nyavägen 666';
 ----------------------------------------------------- UpdatePopularity SP:
 CREATE OR ALTER PROCEDURE UpdatePopularity
 @AddedScore int,
@@ -341,43 +391,7 @@ SELECT * FROM [Order];
 -- TODO: Borde sätta en Order.Ordernumber här!
 -- Copies the values from Cart to [Order].
 -- Remove the Cart.
------------------------------------------------------ UpdateOrder SP:
-CREATE OR ALTER PROCEDURE UpdateOrder
---@CurrentUserId int,
-@ProductId int,
-@OrderNumber int,
-@ReturnAmount int
-AS
-BEGIN
-	IF (SELECT Delivered FROM [Order] WHERE [Order].CostumerId = @OrderNumber AND [Order].ProductId = @ProductId) = 1
-		PRINT 'HERE';
-	ELSE
-		PRINT 'Error: The order has to be delivered before it can be returned.';
-END
 
-EXEC UpdateOrder @ProductId = 1, @OrderNumber = 38, @ReturnAmount = 1;
-
-SELECT * FROM [Order];
-
--- Man borde också kunna använda Ordernumber?
--- Används ifall en kund vill returnera en vara.
--- Går att uppdatera [Order].ReturnAmount med denna.
------------------------------------------------------ Bonus: AddRemoveProduct SP:
--- Måste också hantera produkter som t.ex. ligger i Cart.
--- Lägger till/tar bort en Product. Måste också ta bort dess Popularity i samma veva.
--- Kan behöva en ON DELETE CASCADE på FK:n i tabeller här..
------------------------------------------------------ Bonus: UpdateProduct SP:
--- Updaterar pris och description på en Product.
--- Kan också lägga till en ny? Byt namn.
------------------------------------------------------ NewUser SP:
---CREATE OR ALTER PROCEDURE NewUser
---@UserName
--- TODO: Fortsätt här!
---SELECT * FROM Costumer
--- Lägger till ny användare.
--- Om man ska ha flera "nivår" borde kanske dessa vara separerade. Känns inte helt smart att blanda kunder med användare som har högre privelegier?
------------------------------------------------------ UpdateCostumer SP:
--- Uppdaterar info för en användare.
 ----------------------------------------------------- Deliver order SP:
 -- Används av personalen.
 -- [Order].Delivered = 1
@@ -496,6 +510,34 @@ SELECT * FROM Cart;
 SELECT * FROM [Order];
 SELECT * FROM Storage;
 
+----------------------------------------------------- UpdateOrder SP:
+CREATE OR ALTER PROCEDURE UpdateOrder
+--@CurrentUserId int,
+@ProductId int,
+@OrderNumber int,
+@ReturnAmount int
+AS
+BEGIN
+	IF (SELECT Delivered FROM [Order] WHERE [Order].CostumerId = @OrderNumber AND [Order].ProductId = @ProductId) = 1
+		PRINT 'HERE';
+	ELSE
+		PRINT 'Error: The order has to be delivered before it can be returned.';
+END
+
+EXEC UpdateOrder @ProductId = 1, @OrderNumber = 38, @ReturnAmount = 1;
+
+SELECT * FROM [Order];
+
+-- Man borde också kunna använda Ordernumber?
+-- Används ifall en kund vill returnera en vara.
+-- Går att uppdatera [Order].ReturnAmount med denna.
+----------------------------------------------------- Bonus: AddRemoveProduct SP:
+-- Måste också hantera produkter som t.ex. ligger i Cart.
+-- Lägger till/tar bort en Product. Måste också ta bort dess Popularity i samma veva.
+-- Kan behöva en ON DELETE CASCADE på FK:n i tabeller här..
+----------------------------------------------------- Bonus: UpdateProduct SP:
+-- Updaterar pris och description på en Product.
+-- Kan också lägga till en ny? Byt namn.
 
 ----------------------------------------------------- Storage adjustment SP:
 CREATE OR ALTER PROCEDURE StorageAdjustment
