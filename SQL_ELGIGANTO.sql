@@ -95,6 +95,7 @@ ALTER TABLE Storage ADD CONSTRAINT FK_Storage_Product FOREIGN KEY (ProductId) RE
 ALTER TABLE StorageTransaction ADD CONSTRAINT FK_StorageTrasaction_Product FOREIGN KEY (ProductId) REFERENCES Product(Id);
 ALTER TABLE StorageTransaction ADD CONSTRAINT FK_StorageTransaction_Reason FOREIGN KEY (ReasonId) REFERENCES TransactionReason(Id);
 
+-- TODO: Lägg in dessa i tabellerna ovan istället för att använda ALTER TABLE.
 -- TODO: ON DELETE CASCADE kan vara bra någonstans? Borde vara på Category ifall man nu skulle ta bort en hel kategori någon gång (men man vill inte köra DELETE utan hade varit grymmare ifall man satta NULL som Product.CategoryId).
 
 -- Problem med FK_Storage_Reserved: Går endast att ha en Reserved per produkt. Är bättre att sköta deetta helt i "Reserved".
@@ -108,9 +109,9 @@ INSERT INTO Category ([Name]) VALUES ('GPU'), ('CPU'), ('RAM');
 INSERT INTO TransactionReason (Reason) VALUES ('Delivery'), ('Return'), ('Stock adjustment');
 -- Förutbestämd testdata:
 --INSERT INTO Popularity (Popularity) VALUES (10), (15), (20), (40), (35), (30), (100), (200), (150);
-INSERT INTO Product (CategoryId, PopularityScore, [Name], Price) VALUES (1, 10, 'Voodoo 2', 399.99), (1, 20, 'GeForce', 449.99), (1, 15, 'Radeon', 349.99);
-INSERT INTO Product (CategoryId, PopularityScore, [Name], Price) VALUES (2, 35, 'Intel 300 MHz', 599.99), (2, 40, 'AMD 100 MHz', 299.99), (2, 30, 'Intel 333 MHz', 699.99);
-INSERT INTO Product (CategoryId, PopularityScore, [Name], Price) VALUES (3, 100, 'Noname 128 MB', 49.99), (3, 200, 'Intel 512 MB', 199.99), (3, 150, 'MyMemory 1024 MB', 249.99);
+INSERT INTO Product (CategoryId, PopularityScore, [Name], Price) VALUES (1, 10, 'Voodoo 2', 399.99), (1, 20, 'GeForce', 449.99), (1, 15, 'Radeon', 349.99), (1, 5, 'Bobby-graphic', 49.99), (1, 3, 'Greger graphics', 99.99);
+INSERT INTO Product (CategoryId, PopularityScore, [Name], Price) VALUES (2, 35, 'Intel 300 MHz', 599.99), (2, 40, 'AMD 100 MHz', 299.99), (2, 30, 'Intel 333 MHz', 699.99), (2, 4, 'Bobby-Central possessing unit', 29.99), (2, 2, 'Greger CPU', 199.99);
+INSERT INTO Product (CategoryId, PopularityScore, [Name], Price) VALUES (3, 100, 'Noname 128 MB', 49.99), (3, 200, 'Intel 512 MB', 199.99), (3, 150, 'MyMemory 1024 MB', 249.99), (3, 20, 'Boby-b-Good memory 384 MB', 249.99), (3, 10, 'Greger Memory 1024 MB', 149.99);
 --INSERT INTO Popularity (ProductId, Popularity) VALUES (1, 10), (2, 15), (3, 20), (4, 40), (5, 35), (6, 30), (7, 100), (8, 200), (9, 150);
 --DELETE FROM Product;
 --SELECT * FROM Popularity;
@@ -240,6 +241,7 @@ BEGIN
 END
 
 -- TODO: ISNULL är fullösning. Problemet är att man gör en update även fast man bara kopierar samma värde som var innan.
+-- https://stackoverflow.com/questions/6677517/update-if-different-changed
 -- TODO: Borde man ta bort alla Orders som har med ett account att göra ifall man tar bort kontot?
 SELECT * FROM Costumer;
 EXEC UpdateCostumer @SelectedCostumerId = 2, @DeleteAccount = 1;
@@ -639,6 +641,29 @@ SELECT * FROM StorageTransaction;
 	-- Ifall Order.Delivered är 0 så är det en retur.
 	-- Om Storage.Amount == 
 --END
+
+----------------------------------------------------- PopularityReport SP
+CREATE OR ALTER PROCEDURE PopularityReport
+@CategoryId int = NULL
+AS
+BEGIN
+	SELECT
+		DENSE_RANK() OVER(PARTITION BY Product.CategoryId ORDER BY Product.PopularityScore DESC) AS [Rank],
+		Category.[Name] AS Category,
+		Product.[Name],
+		Product.PopularityScore AS Score
+	FROM Product
+	INNER JOIN Category ON Category.Id = Product.CategoryId;
+	-- TOP 5 med högst Popularity.PopularityScore.
+	-- Kan börja med TOP 3!
+	-- SELECT * FROM Product
+END
+UPDATE Product SET PopularityScore = 10 WHERE Id = 4;
+SELECT * FROM Product;
+----------------------------------------------------- ReturnReport
+-- TOP 5 mest returnerade för vald kategori.
+-- Använd "window functions (ascoolt!, men utanför kursen), table functions, loopa i en SP och fylla på en tabellvariabel m.m." för att visa TOP 5 i för varje kategori i 
+----------------------------------------------------- CategoryReport
 
 ----------------------------------------------------- Trigger för Transaction.
 
