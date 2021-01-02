@@ -69,7 +69,7 @@ CREATE TABLE Cart
 CREATE TABLE Storage
 (
 	Id int PRIMARY KEY IDENTITY(1,1),
-	ProductId int NOT NULL,
+	ProductId int NOT NULL UNIQUE,
 	Amount int NOT NULL
 );
 CREATE TABLE StorageTransaction
@@ -142,87 +142,11 @@ INSERT INTO TransactionReason (Reason) VALUES ('Delivery'), ('Return'), ('Stock 
 INSERT INTO Product (CategoryId, PopularityScore, [Name], Price) VALUES (1, 10, 'Voodoo 2', 399.99), (1, 20, 'GeForce', 449.99), (1, 15, 'Radeon', 349.99), (1, 5, 'Bobby-graphic', 49.99), (1, 3, 'Greger graphics', 99.99);
 INSERT INTO Product (CategoryId, PopularityScore, [Name], Price) VALUES (2, 35, 'Intel 300 MHz', 599.99), (2, 40, 'AMD 100 MHz', 299.99), (2, 30, 'Intel 333 MHz', 699.99), (2, 4, 'Bobby-Central possessing unit', 29.99), (2, 2, 'Greger CPU', 199.99);
 INSERT INTO Product (CategoryId, PopularityScore, [Name], Price) VALUES (3, 100, 'Noname 128 MB', 49.99), (3, 200, 'Intel 512 MB', 199.99), (3, 150, 'MyMemory 1024 MB', 249.99), (3, 20, 'Boby-b-Good memory 384 MB', 249.99), (3, 10, 'Greger Memory 1024 MB', 149.99);
-INSERT INTO Costumer ([Name], Mail, [Address]) VALUES ('Boris', 'boris@mail.com', 'Borisgatan 2');
-INSERT INTO Costumer ([Name], Mail, [Address]) VALUES ('Greger', 'greger@mail.com', 'Gregervägen 3');
-INSERT INTO Storage (ProductId, Amount) VALUES (1, 10), (2, 20), (3, 50), (4, 60), (5, 70), (6, 100), (7, 100), (8, 100), (9, 100);
+INSERT INTO Storage (ProductId, Amount) VALUES (1, 10), (2, 20), (3, 50), (4, 60), (5, 70), (6, 100), (7, 100), (8, 100), (9, 100), (10, 100), (11, 100), (12, 100), (13, 100), (14, 100), (15, 100);
+INSERT INTO StorageTransaction (ProductId, Amount, ReasonId) VALUES (1, 10, 3), (2, 20, 3), (3, 50, 3), (4, 60, 3), (5, 70, 3), (6, 100, 3), (7, 100, 3), (8, 100, 3), (9, 100, 3), (10, 100, 3), (11, 100, 3), (12, 100, 3), (13, 100, 3), (14, 100, 3), (15, 100, 3);
+--INSERT INTO Costumer ([Name], Mail, [Address]) VALUES ('Boris', 'boris@mail.com', 'Borisgatan 2');
+--INSERT INTO Costumer ([Name], Mail, [Address]) VALUES ('Greger', 'greger@mail.com', 'Gregervägen 3');
 
--- Händelseförlopp:
-/*INSERT INTO Cart (CostumerId, ProductId) VALUES (1, 2);			-- Skapa en kundvagn för en kund med en produkt (GPU - Radeon).
-UPDATE Cart SET Amount = 2 WHERE Id = 1;						-- Uppdaterar hur många varor kunden har i kundvagnen.
-INSERT INTO [Order] (ProductId, CostumerId, Amount)				-- Kopierar värdena från Cart till [Order]-tabellen (detta för att ge det ett ordernummer).
-	SELECT CostumerId, ProductId, Amount FROM Cart
-	WHERE Id = 1;
-DELETE FROM Cart WHERE Id = 1;									-- Tar bort Id:t från Cart-tabellen. */
--- INSERT INTO Reserved (OrderId, StorageId) VALUES (1, 2);		-- Lägger in en reservation för order 1 som är kopplat till ett Id i lagret.
-
------------------------------------------------------ ListProducts SP:
-CREATE OR ALTER PROCEDURE ListProducts
-@SelectedCategoryId int,
-@RowsToSkip int = 0,
-@RowsAmount int = 3
-AS
-BEGIN
-	SELECT Product.Id, [Name], Price FROM Product
-	WHERE CategoryId = @SelectedCategoryId
-	ORDER BY PopularityScore DESC
-	OFFSET @RowsToSkip ROWS FETCH NEXT @RowsAmount ROWS ONLY;		-- Pagination. OFFSET = The number of rows to skip. FETCH = The amount of rows after the OFFSET that's returned.
-END
-
--- Test:
-EXEC ListProducts @SelectedCategoryId = 2, @RowsToSkip = 0, @RowsAmount = 1;
-
--- TODO: Hantera exeptions: @RowsToSkip < 0, @RowsAmount <= 0?
--- SELECT * FROM Product;
--- SELECT * FROM 
-
--- TODO: Kan man på något sätt får reda på max-värdet av rows (när man använder OFFSET) så att användarens klient vet när det räcker?
--- TODO: Testa pagnation med mer testdata. Detta är mer intressant att använda i klienten.
--- TODO: Hur hanterar man att ingen @SelectedCategoryId väljs? Ska SP:n returnera en felkod?
--- Visa produkter baserat på vald Category (sorterad efter Popularity).
-	-- Bonus: Option för att sortera efter andra saker en popularity.
-	-- Bonus: Möjlighet att välja flera kategorier. Använd den då istället en SELECT på den; sortera i klienten.
-	----------------------------------------------------- SearchProduct SP:
-CREATE OR ALTER PROCEDURE SearchProduct
-@SearchString varchar(50) = NULL,	-- NULL = Empty string/all Products.
-@CategoryId int = NULL,		-- NULL = All categories.
-@IsAvailable bit = 0,		-- 0 = Shows Product even if there are none in Stock. 1 = The Product need to be at Stock.Amount > 0.
-@SortColumn int = 0,		-- 0 = Popularity, 2 = Price, 3 = Name.
-@SortOrder bit = 0,			-- 0 = ASC, 1 = DESC.
-@RowsToSkip int = 0,		-- The number of rows (from the top of the serch result) to exclude.
-@RowsAmount int = 3			-- Number of rows after @RowsToSkip to include.
-AS
-BEGIN
---	PRINT 'SearchString: ' + @SearchString + ' CategoryId: ' + CAST (@CategoryId AS varchar(50)) + ' IsAvailable: ' + CAST(@IsAvailable AS varchar(50)) + ' SortColumn: ' + CAST(@SortColumn AS varchar(50)) + ' SortOrder: ' + CAST(@SortOrder AS varchar(50));
-
-	SELECT Product.Id, Product.[Name], Product.Price
-	FROM Product
-	INNER JOIN Storage ON Storage.ProductId = Product.Id
-	WHERE
-		[Name] LIKE '%' + @SearchString + '%'
-		AND (@IsAvailable = 0 OR(@IsAvailable = 1 AND Storage.Amount > 0))		-- Antingen måste @IsAvailable vara 0 OR så måste @IsAvailable vara 1 AND Storage.Amount > 0.
-		AND (@CategoryId IS NULL OR(@CategoryId = Product.CategoryId))
-	ORDER BY
-		CASE WHEN @SortOrder = 1 AND @SortColumn = 0 THEN Product.PopularityScore END DESC,
-		CASE WHEN @SortOrder = 1 AND @SortColumn = 1 THEN Product.Price END DESC,
-		CASE WHEN @SortOrder = 1 AND @SortColumn = 2 THEN Product.[Name] END DESC,
-		CASE WHEN @SortOrder = 0 AND @SortColumn = 0 THEN Product.PopularityScore END, 
-		CASE WHEN @SortOrder = 0 AND @SortColumn = 1 THEN Product.Price END,
-		CASE WHEN @SortOrder = 0 AND @SortColumn = 2 THEN Product.[Name] END
-	OFFSET @RowsToSkip ROWS FETCH NEXT @RowsAmount ROWS ONLY;
-END
-
-
--- Test:
--- 0 = Popularity, 2 = Price, 3 = Name.
-EXEC SearchProduct @SearchString = '', @CategoryId = 1;
-EXEC SearchProduct @SearchString = '', @IsAvailable = 1, @SortColumn = 2, @SortOrder = 3;
-EXEC SearchProduct @SearchString = '', @CategoryId = 2, @IsAvailable = 12, @SortColumn = 2, @SortOrder = 1, @RowsToSkip = 0, @RowsAmount = 3;
-EXEC SearchProduct @SearchString = '', @IsAvailable = 1, @SortColumn = 0, @SortOrder = 1;
-SELECT * FROM Product;
--- Sökfunktion: Sök på något och få tillbaka de Products som matchar.
-	-- Bonus: Lägg till popularitet till något ifall man söker på det. Behöver göra en UPDATE på alla Product som matchar sökningen.
-	-- Bonus: Man kan skriva in * och det översätts till %!
-	-- Bonus: Möjlighet att söka på flera kategorier (@CategoryId) än en.
 ----------------------------------------------------- CreateNewUser SP:
 CREATE OR ALTER PROCEDURE CreateNewUser
 @UserName varchar(50),
@@ -234,17 +158,14 @@ BEGIN
 END
 
 -- Tets:
+EXEC CreateNewUser @UserName = 'Boris', @Email = 'boris@mail.com', @Address = 'Borisgatan 2B';
+EXEC CreateNewUser @UserName = 'Greger', @Email = 'greger@mail.com', @Address = 'Gregervägen 3C';
 EXEC CreateNewUser @UserName = 'Klabbe', @Email = 'Klabbe@klabbmail.com', @Address = 'Bollvägen 12A';
 SELECT * FROM Costumer;
 
--- Kolla @.
---CREATE OR ALTER PROCEDURE NewUser
---@UserName
--- TODO: Returnera det senaste skapta Id:t, kan vara sjysst ifall man ska logga in direkt efter.
+-- TODO: Returnera det senaste skapta Id:t, kan vara sjysst ifall man ska logga in direkt efter?
 -- TODO: Mail confirmed.
--- TODO: Fortsätt här!
 --SELECT * FROM Costumer
--- Lägger till ny användare.
 -- Om man ska ha flera "nivår" borde kanske dessa vara separerade. Känns inte helt smart att blanda kunder med användare som har högre privelegier?
 ----------------------------------------------------- UpdateCostumer SP:
 -- Uppdaterar info för en användare.
@@ -273,20 +194,87 @@ END
 -- TODO: Borde man ta bort alla Orders som har med ett account att göra ifall man tar bort kontot?
 SELECT * FROM Costumer;
 EXEC UpdateCostumer @SelectedCostumerId = 2, @DeleteAccount = 1;
-EXEC UpdateCostumer @SelectedCostumerId = 2, @UpdatedName = 'Seeeeeeeeeeeeeeger', @UpdatedEmail = 'mail@mail.com', @UpdatedAddress = 'Nyavägen 666';
------------------------------------------------------ UpdatePopularity SP:
-CREATE OR ALTER PROCEDURE UpdatePopularity
-@AddedScore int,
-@ProductId int,
-@ProductAmount int = 1
+EXEC UpdateCostumer @SelectedCostumerId = 2, @UpdatedName = 'Seeeeeger', @UpdatedEmail = 'segermail@mail.com', @UpdatedAddress = 'Nyavägen 666F';
+
+----------------------------------------------------- ListProducts SP:
+CREATE OR ALTER PROCEDURE ListProducts
+@SelectedCategoryId int,
+@RowsToSkip int = 0,
+@RowsAmountToReturn int = 3
 AS
 BEGIN
-	IF @AddedScore IS NOT NULL AND @ProductId IS NOT NULL
-		UPDATE Product SET Product.PopularityScore += (@AddedScore * @ProductAmount) WHERE Product.Id = @ProductId;
+	SELECT Product.Id, [Name], Price FROM Product
+	WHERE CategoryId = @SelectedCategoryId
+	ORDER BY PopularityScore DESC
+	OFFSET @RowsToSkip ROWS FETCH NEXT @RowsAmountToReturn ROWS ONLY;		-- Pagination. OFFSET = The number of rows to skip. FETCH = The amount of rows after the OFFSET that's returned.
 END
 
 -- Test:
-EXEC UpdatePopularity @AddedScore = 1, @ProductId = 8;
+EXEC ListProducts @SelectedCategoryId = 1, @RowsToSkip = 0, @RowsAmountToReturn = 3;
+
+-- TODO: Hantera exeptions: @RowsToSkip < 0, @RowsAmount <= 0?
+-- SELECT * FROM Product;
+-- SELECT * FROM 
+
+-- TODO: Kan man på något sätt får reda på max-värdet av rows (när man använder OFFSET) så att användarens klient vet när det räcker?
+-- TODO: Hur hanterar man att ingen @SelectedCategoryId väljs? Ska SP:n returnera en felkod?
+-- Visa produkter baserat på vald Category (sorterad efter Popularity).
+	-- Bonus: Option för att sortera efter andra saker en popularity.
+	-- Bonus: Möjlighet att välja flera kategorier. Använd den då istället en SELECT på den; sortera i klienten.
+
+----------------------------------------------------- SearchProduct SP:
+CREATE OR ALTER PROCEDURE SearchProduct
+@SearchString varchar(50) = '',		-- NULL = Empty string/all Products.
+@CategoryId int = NULL,				-- NULL = All categories.
+@IsAvailable bit = 0,				-- 0 = Shows Product even if there are none in Stock. 1 = The Product need to be at Stock.Amount > 0.
+@SortColumn int = 0,				-- 0 = Popularity, 2 = Price, 3 = Name.
+@SortOrder bit = 0,					-- 0 = ASC, 1 = DESC.
+@RowsToSkip int = 0,				-- The number of rows (from the top of the serch result) to exclude.
+@RowsAmountToReturn int = 3					-- Number of rows after @RowsToSkip to include.
+AS
+BEGIN
+	SELECT Product.Id, Product.[Name], Product.Price
+	FROM Product
+	INNER JOIN Storage ON Storage.ProductId = Product.Id
+	WHERE
+		[Name] LIKE '%' + @SearchString + '%'
+		AND (@IsAvailable = 0 OR (@IsAvailable = 1 AND Storage.Amount > 0))		-- Antingen måste @IsAvailable vara 0 OR så måste @IsAvailable vara 1 AND Storage.Amount > 0.
+		AND (@CategoryId IS NULL OR (@CategoryId = Product.CategoryId))
+	ORDER BY
+		CASE WHEN @SortOrder = 1 AND @SortColumn = 0 THEN Product.PopularityScore END DESC,
+		CASE WHEN @SortOrder = 1 AND @SortColumn = 1 THEN Product.Price END DESC,
+		CASE WHEN @SortOrder = 1 AND @SortColumn = 2 THEN Product.[Name] END DESC,
+		CASE WHEN @SortOrder = 0 AND @SortColumn = 0 THEN Product.PopularityScore END, 
+		CASE WHEN @SortOrder = 0 AND @SortColumn = 1 THEN Product.Price END,
+		CASE WHEN @SortOrder = 0 AND @SortColumn = 2 THEN Product.[Name] END
+	OFFSET @RowsToSkip ROWS FETCH NEXT @RowsAmountToReturn ROWS ONLY;
+END
+
+-- Test:
+EXEC SearchProduct @RowsToSkip = 0, @RowsAmountToReturn = 5;
+EXEC SearchProduct @CategoryId = 1;
+EXEC SearchProduct @SearchString = '', @CategoryId = 1;
+EXEC SearchProduct @SearchString = '', @IsAvailable = 1, @SortColumn = 2, @SortOrder = 3;
+EXEC SearchProduct @SearchString = '', @CategoryId = 2, @IsAvailable = 12, @SortColumn = 2, @SortOrder = 1, @RowsToSkip = 0, @RowsAmountToReturn = 3;
+EXEC SearchProduct @SearchString = '', @IsAvailable = 1, @SortColumn = 0, @SortOrder = 1;
+SELECT * FROM Product;
+-- Sökfunktion: Sök på något och få tillbaka de Products som matchar.
+	-- Bonus: Lägg till popularitet till något ifall man söker på det. Behöver göra en UPDATE på alla Product som matchar sökningen.
+	-- Bonus: Möjlighet att söka på flera kategorier (@CategoryId) än en.
+
+----------------------------------------------------- UpdatePopularity SP:
+CREATE OR ALTER PROCEDURE UpdatePopularity
+@ProductId int,
+@AddedScore int,							-- The score can be different dependant on where it's added. Must be a positive number.
+@ProductAmountMultiplier int = 1			-- The amount of products affected. Can be a negative number.
+AS
+BEGIN
+	IF @AddedScore IS NOT NULL AND @AddedScore >= 0 AND @ProductId IS NOT NULL
+		UPDATE Product SET Product.PopularityScore += (@AddedScore * @ProductAmountMultiplier) WHERE Product.Id = @ProductId;
+END
+
+-- Test:
+EXEC UpdatePopularity @ProductId = 7, @AddedScore = 1, @ProductAmountMultiplier = 1;
 SELECT * FROM Product;
 
 -- TODO: Måste kunna ta amount också, detta för att man ska kunna multiplicera med antalet produkter som lagts till. Detta är ett designval. Vet inte om det är bästa popularitets-algoritmen.
@@ -298,10 +286,10 @@ SELECT * FROM Product;
 	-- Detta borde göras i backend-klienten.
 ----------------------------------------------------- ProductDetail SP:
 CREATE OR ALTER PROCEDURE ProductDetail
-@SelectedProductId int = NULL
+@SelectedProductId int
 AS
 BEGIN
-	SELECT Product.Id, Category.[Name], Product.[Name], Product.Price, Storage.Amount FROM Product
+	SELECT Product.Id, Category.[Name], Product.[Name], Product.Price, Storage.Amount AS Stock FROM Product
 	INNER JOIN Storage ON Storage.ProductId = Product.Id
 	INNER JOIN Category ON Category.Id = Product.CategoryId
 	WHERE Product.Id = @SelectedProductId;
@@ -316,7 +304,7 @@ SELECT * FROM Product;
 	-- Ska visa Name, Category, Price och lagerstatus.
 ----------------------------------------------------- AddToCart SP:
 CREATE OR ALTER PROCEDURE AddToCart
-@CurrentUserId int,					-- When no "=" is used an argument with a value is required (the argument can still use NULL as a value).
+@CurrentUserId int,					-- When no "=" is used an argument with a value is required (the argument can still be set to NULL whel calling the SP).
 @ProductId int,
 @ProductAmount int
 AS
@@ -329,46 +317,33 @@ BEGIN
 		BEGIN
 --			PRINT 'INSERT!';
 			INSERT INTO Cart (CostumerId, ProductId, Amount) VALUES (@CurrentUserId, @ProductId, @ProductAmount);
-			EXEC UpdatePopularity @ProductId = @ProductId, @AddedScore = 5, @ProductAmount = @ProductAmount;
+			EXEC UpdatePopularity @ProductId = @ProductId, @AddedScore = 5, @ProductAmountMultiplier = @ProductAmount;
 		END
 		ELSE IF (SELECT Amount + @ProductAmount FROM Cart WHERE Cart.ProductId = @ProductId AND Cart.CostumerId = @CurrentUserId) = 0
 		BEGIN
 --			PRINT 'DELETE!';
 			DELETE FROM Cart WHERE Cart.ProductId = @ProductId AND Cart.CostumerId = @CurrentUserId;
-			EXEC UpdatePopularity @ProductId = @ProductId, @AddedScore = 5, @ProductAmount = @ProductAmount;
-			--UpdatePopularity
+			EXEC UpdatePopularity @ProductId = @ProductId, @AddedScore = 5, @ProductAmountMultiplier = @ProductAmount;
 		END
-		ELSE IF @ProductId IN (SELECT ProductId FROM Cart WHERE Cart.CostumerId = @CurrentUserId)
+		ELSE IF @ProductId IN (SELECT ProductId FROM Cart WHERE Cart.CostumerId = @CurrentUserId) AND (SELECT Amount + @ProductAmount FROM Cart WHERE Cart.ProductId = @ProductId AND Cart.CostumerId = @CurrentUserId) > 0
 		BEGIN
 --			PRINT 'UPDATE!';
 			UPDATE Cart SET Cart.Amount += @ProductAmount WHERE Cart.ProductId = @ProductId AND Cart.CostumerId = @CurrentUserId;
-			EXEC UpdatePopularity @ProductId = @ProductId, @AddedScore = 5, @ProductAmount = @ProductAmount;
-			--UpdatePopularity
+			EXEC UpdatePopularity @ProductId = @ProductId, @AddedScore = 5, @ProductAmountMultiplier = @ProductAmount;
 		END
 	END
-	ELSE
-		PRINT 'Error: One or more arguments is NULL.';
+--	ELSE
+--		PRINT 'Error: One or more arguments is NULL.';
 END
--- TODO: Använd en trigger på Cart som tar bort raden ifall Cart.Amount <= 0?
--- TODO: Måste buggtesta. Är möjligt att få negativ PopularityScore även fast ingen vara läggs till eller tas bort från Cart. T.ex. då man kör en AddToCart när Cart är tom från början.
 
 -- Test:
--- Testa MINUS!
-EXEC AddToCart @CurrentUserId = 2, @ProductId = 3, @ProductAmount = -10;
+EXEC AddToCart @CurrentUserId = 1, @ProductId = 4, @ProductAmount = -1;
 SELECT * FROM Cart;
 SELECT * FROM Product;
+-- TODO: Använd en trigger på Cart som tar bort raden ifall Cart.Amount <= 0?
 
-SELECT * FROM Costumer;
-EXEC AddToCart @CurrentUserId = 1, @ProductId = NULL, @ProductAmount = 2;
-
-INSERT INTO Cart (CostumerId, ProductId, Amount) VALUES (3, 5, 1);
-DELETE FROM Cart;
-INSERT INTO Cart (CostumerId, ProductId, Amount) VALUES (1, 3, 3);
--- TODO: Ska ta bort Cart ifall Amount <= 0.
 -- @CurrentUserId är ännu en sak man skulle vilja hantera som en "global variabel". Är därmed bättre att hantera i backend-klienten.
--- If the ProductId already is in the cart the amount will increment with 1.
--- If we decrement the Amount and it reaches 0 the Cart is removed.
--- Add a feature to remove the card instantly (withouh having to reach 0).
+-- TODO: Add a feature to remove the card instantly (withouh having to reach 0).
 
 -- Kolla dessa:
 -- https://docs.microsoft.com/en-us/sql/t-sql/statements/create-procedure-transact-sql?view=sql-server-ver15
@@ -377,23 +352,23 @@ INSERT INTO Cart (CostumerId, ProductId, Amount) VALUES (1, 3, 3);
 -- Bättre prestanda och man kan sätta en parameter som "NOT NULL".
 ----------------------------------------------------- ListCartContent SP:
 CREATE OR ALTER PROCEDURE ListCartContent
-@CurrentUser int
+@CurrentUserId int
 AS
 BEGIN
 	SELECT Product.Id, Product.[Name], Product.Price, Cart.Amount FROM Cart
 	INNER JOIN Product ON Product.Id = Cart.ProductId
-	WHERE Cart.CostumerId = @CurrentUser;
+	WHERE Cart.CostumerId = @CurrentUserId;
 END
 
--- TODO: Borde JOINa tabeller för att skriva ut namn på åt minsone produkten.
 -- Test:
-EXEC ListCartContent @CurrentUser = 2;
+EXEC ListCartContent @CurrentUserId = 2;
 EXEC AddToCart @CurrentUserId = 1, @ProductId = 1, @ProductAmount = 2;
 EXEC AddToCart @CurrentUserId = 2, @ProductId = 3, @ProductAmount = 2;
 EXEC AddToCart @CurrentUserId = 1, @ProductId = 2, @ProductAmount = 2;
 EXEC AddToCart @CurrentUserId = 2, @ProductId = 4, @ProductAmount = 2;
 SELECT * FROM Cart;
 -- List the content in a cart with a specific Id.
+-- TODO: Skriv ut totala summan!
 ----------------------------------------------------- CheckoutCart SP:
 CREATE OR ALTER PROCEDURE CheckoutCart
 @CurrentUserId int
@@ -406,21 +381,17 @@ BEGIN
 		SELECT CostumerId, ProductId, @RandomOrdernumber, Amount
 		FROM Cart
 		WHERE Cart.CostumerId = @CurrentUserId;
-
 	DELETE FROM Cart
 		WHERE Cart.CostumerId = @CurrentUserId;
 END
 
 -- Test:
-EXEC CheckoutCart @CurrentUserId = 1;
+EXEC CheckoutCart @CurrentUserId = 2;
 
 SELECT * FROM Cart;
 SELECT * FROM [Order];
 
 -- TODO: Random-algoritmen är rätt dålig. Borde baseras på datum eller något för att minimera risken att duplicates uppstår.
--- TODO: Borde sätta en Order.Ordernumber här!
--- Copies the values from Cart to [Order].
--- Remove the Cart.
 
 ----------------------------------------------------- Deliver order SP:
 -- Används av personalen.
