@@ -3,51 +3,88 @@ USE Student11;
 ALTER TABLE [Order] DROP CONSTRAINT FK_Order_Costumer;
 ALTER TABLE [Order] DROP CONSTRAINT FK_Order_Product;
 ALTER TABLE Storage DROP CONSTRAINT FK_Storage_Product;
---ALTER TABLE Storage DROP CONSTRAINT FK_Storage_Reserved;
---DROP TABLE IF EXISTS Popularity;
-DROP TABLE IF EXISTS Cart;
-DROP TABLE IF EXISTS StorageTransaction;
-DROP TABLE IF EXISTS TransactionReason;
-DROP TABLE IF EXISTS Costumer;
-DROP TABLE IF EXISTS Category;
-DROP TABLE IF EXISTS [Order];
-DROP TABLE IF EXISTS Reserved;
-DROP TABLE IF EXISTS Storage;
-DROP TABLE IF EXISTS Product;
+ALTER TABLE Product DROP CONSTRAINT FK_Product_Category;
 
--- DROP TRIGGER IF EXISTS TR_StorageTransaction;
-DROP PROC IF EXISTS ListProducts;
-DROP PROC IF EXISTS UpdatePopularity;
-DROP PROC IF EXISTS ProductDetail;
-DROP PROC IF EXISTS SearchProduct;
-DROP PROC IF EXISTS DeliverOrder;
-DROP PROC IF EXISTS StorageAdjustment;
-DROP PROC IF EXISTS NewTransaction;
-DROP PROC IF EXISTS AddToCart;
-DROP PROC IF EXISTS NewUser;
-DROP PROC IF EXISTS ListCartContent;
-DROP PROC IF EXISTS CheckoutCart;
-DROP PROC IF EXISTS CreateNewUser;
-DROP PROC IF EXISTS UpdateCostumer;
+DROP TABLE Cart;
+DROP TABLE StorageTransaction;
+DROP TABLE TransactionReason;
+DROP TABLE Costumer;
+DROP TABLE Category;
+DROP TABLE [Order];
+DROP TABLE Storage;
+DROP TABLE Product;
 
-CREATE TABLE Category (Id int PRIMARY KEY IDENTITY(1,1), [Name] varchar (50) NOT NULL UNIQUE);
---CREATE TABLE Popularity (Id int PRIMARY KEY IDENTITY(1,1), ProductId int NOT NULL UNIQUE, Popularity int NOT NULL DEFAULT 0);
---CREATE TABLE Popularity (Id int PRIMARY KEY IDENTITY(1,1), Popularity int NOT NULL DEFAULT 0);
---CREATE TABLE Product (Id int PRIMARY KEY IDENTITY(1,1), PopularityId int NOT NULL UNIQUE, CategoryId int NOT NULL, [Name] varchar(50) NOT NULL, Price float(53) NOT NULL CONSTRAINT CHK_Product_Price CHECK (Price > 0));
-CREATE TABLE Product (Id int PRIMARY KEY IDENTITY(1,1), PopularityScore int NOT NULL DEFAULT 0, CategoryId int NOT NULL, [Name] varchar(50) NOT NULL, Price float(53) NOT NULL CONSTRAINT CHK_Product_Price CHECK (Price > 0));
-CREATE TABLE Costumer (Id int PRIMARY KEY IDENTITY(1,1), [Name] varchar(50) NOT NULL, Mail varchar(50) NOT NULL UNIQUE, [Address] varchar(50) NOT NULL);
---CREATE TABLE [Order] (Id int PRIMARY KEY IDENTITY(1,1), ProductId int NOT NULL, CostumerId int NOT NULL, Ordernumber int NOT NULL DEFAULT CAST(RAND() * 100 AS int), Amount int NOT NULL, Delivered bit DEFAULT 0);
-CREATE TABLE [Order] (Id int PRIMARY KEY IDENTITY(1,1), ProductId int NOT NULL, CostumerId int NOT NULL, Ordernumber int NOT NULL, Amount int NOT NULL, Delivered bit DEFAULT 0, ReturnAmount int, CONSTRAINT CHK_Order_ReturnAmount CHECK (ReturnAmount > 0 AND ReturnAmount <= Amount));		-- Instead of using a CONSTRAINT on just one column it's used on the whole table. Needed if we want to compare values from different columns
---SELECT * FROM [Order];
---UPDATE [Order] SET ReturnAmount = 4 WHERE Id = 2;
-CREATE TABLE Cart (Id int PRIMARY KEY IDENTITY(1,1), CostumerId int NOT NULL, ProductId int NOT NULL, Amount int NOT NULL DEFAULT 1 CONSTRAINT CHK_Cart_Amount CHECK (Amount >= 0));
---CREATE TABLE Reserved (Id int PRIMARY KEY IDENTITY(1,1), OrderId int NOT NULL, StorageId int NOT NULL);					-- Testa utan, se förklaring nedan.
---CREATE TABLE Storage (Id int PRIMARY KEY IDENTITY(1,1), ProductId int NOT NULL, Amount int NOT NULL, ReservedId int);		-- ReservedId ska inte vara här!
-CREATE TABLE Storage (Id int PRIMARY KEY IDENTITY(1,1), ProductId int NOT NULL, Amount int NOT NULL);
---CREATE TABLE Storage (Id int PRIMARY KEY IDENTITY(1,1), ProductId int NOT NULL, Amount int NOT NULL, LastTransactionReasonId int);
-CREATE TABLE StorageTransaction (Id int PRIMARY KEY IDENTITY(1,1), ProductId int, [Time] datetime DEFAULT GETDATE(), Amount int NOT NULL, ReasonId int NOT NULL);
-CREATE TABLE TransactionReason (Id int PRIMARY KEY IDENTITY(1,1), Reason varchar(50) NOT NULL UNIQUE);
--- DEFAULT CAST(RAND() * 100 AS int)
+DROP PROC ListProducts;
+DROP PROC UpdatePopularity;
+DROP PROC ProductDetail;
+DROP PROC SearchProduct;
+DROP PROC DeliverOrder;
+DROP PROC StorageAdjustment;
+DROP PROC NewTransaction;
+DROP PROC AddToCart;
+DROP PROC NewUser;
+DROP PROC ListCartContent;
+DROP PROC CheckoutCart;
+DROP PROC CreateNewUser;
+DROP PROC UpdateCostumer;
+
+CREATE TABLE Category
+(
+	Id int PRIMARY KEY IDENTITY(1,1),
+	[Name] varchar (50) NOT NULL UNIQUE
+);
+CREATE TABLE Product
+(
+	Id int PRIMARY KEY IDENTITY(1,1),
+	PopularityScore int NOT NULL DEFAULT 0,
+	CategoryId int NOT NULL,
+	[Name] varchar(50) NOT NULL,
+	Price decimal(5,2) NOT NULL CONSTRAINT CHK_Product_Price CHECK (Price > 0)		-- Använd "decimal" istället för "float" när det handlar om pengar. Kan bli fula avrundningar annars.
+);
+CREATE TABLE Costumer
+(
+	Id int PRIMARY KEY IDENTITY(1,1),
+	[Name] varchar(50) NOT NULL,
+	Mail varchar(50) NOT NULL UNIQUE,
+	[Address] varchar(50) NOT NULL
+);
+CREATE TABLE [Order]
+(
+	Id int PRIMARY KEY IDENTITY(1,1),
+	ProductId int NOT NULL,
+	CostumerId int NOT NULL,
+	Ordernumber int NOT NULL,
+	Amount int NOT NULL,
+	Delivered bit DEFAULT 0,
+	ReturnAmount int,
+	CONSTRAINT CHK_Order_ReturnAmount CHECK (ReturnAmount > 0 AND ReturnAmount <= Amount)	-- Instead of using a CONSTRAINT on just one column it's used on the whole table. Needed if we want to compare values from different columns.
+);
+CREATE TABLE Cart
+(
+	Id int PRIMARY KEY IDENTITY(1,1),
+	CostumerId int NOT NULL,
+	ProductId int NOT NULL,
+	Amount int NOT NULL DEFAULT 1 CONSTRAINT CHK_Cart_Amount CHECK (Amount >= 0)
+);
+CREATE TABLE Storage
+(
+	Id int PRIMARY KEY IDENTITY(1,1),
+	ProductId int NOT NULL,
+	Amount int NOT NULL
+);
+CREATE TABLE StorageTransaction
+(
+	Id int PRIMARY KEY IDENTITY(1,1),
+	ProductId int,
+	[Time] datetime DEFAULT GETDATE(),
+	Amount int NOT NULL,
+	ReasonId int NOT NULL
+);
+CREATE TABLE TransactionReason
+(
+	Id int PRIMARY KEY IDENTITY(1,1),
+	Reason varchar(50) NOT NULL UNIQUE
+);
 
 -- Test:
 /* INSERT INTO Cart (CostumerId, ProductId) VALUES (1, 2);
@@ -81,17 +118,11 @@ INSERT INTO Popularity (ProductId) VALUES (12);			-- Test for constraint */
 -- Nackdelar med att ta bort Reserved-tabellen: Kan potentiellt vara en prestanda-förlust? Kanske går att lösa med index i rätt kolumner. Om man ska kolla saldon måste man också kolla igenom alla ordrar (levererade och icke-levererade) istället för att bara kolla reserved-tabellen. Kanske går att lösa med ett index?
 
 ALTER TABLE Product ADD CONSTRAINT FK_Product_Category FOREIGN KEY (CategoryId) REFERENCES Category(Id);
---ALTER TABLE Product ADD CONSTRAINT FK_Product_Popularity FOREIGN KEY (PopularityId) REFERENCES Popularity(Id);
---ALTER TABLE Popularity ADD CONSTRAINT FK_Popularity_Product FOREIGN KEY (ProductId) REFERENCES Product(Id);
 ALTER TABLE [Order] ADD CONSTRAINT FK_Order_Product FOREIGN KEY (ProductId) REFERENCES Product(Id);
 ALTER TABLE [Order] ADD CONSTRAINT FK_Order_Costumer FOREIGN KEY (CostumerId) REFERENCES Costumer(Id);
 ALTER TABLE Cart ADD CONSTRAINT FK_Cart_Costumer FOREIGN KEY (CostumerId) REFERENCES Costumer(Id);
 ALTER TABLE Cart ADD CONSTRAINT FK_Cart_Product FOREIGN KEY (ProductId) REFERENCES Product(Id);
---ALTER TABLE Reserved ADD CONSTRAINT FK_Reserved_Order FOREIGN KEY (OrderId) REFERENCES [Order](Id);
---ALTER TABLE Reserved ADD CONSTRAINT FK_Reserved_Storage FOREIGN KEY (StorageId) REFERENCES Storage(Id);
 ALTER TABLE Storage ADD CONSTRAINT FK_Storage_Product FOREIGN KEY (ProductId) REFERENCES Product(Id);
---ALTER TABLE Storage ADD CONSTRAINT FK_Storage_TransactionReason FOREIGN KEY (LastTransactionReasonId) REFERENCES TransactionReason(Id);
---ALTER TABLE Storage ADD CONSTRAINT FK_Storage_Reserved FOREIGN KEY (ReservedId) REFERENCES Reserved(Id);
 ALTER TABLE StorageTransaction ADD CONSTRAINT FK_StorageTrasaction_Product FOREIGN KEY (ProductId) REFERENCES Product(Id);
 ALTER TABLE StorageTransaction ADD CONSTRAINT FK_StorageTransaction_Reason FOREIGN KEY (ReasonId) REFERENCES TransactionReason(Id);
 
@@ -108,14 +139,9 @@ ALTER TABLE StorageTransaction ADD CONSTRAINT FK_StorageTransaction_Reason FOREI
 INSERT INTO Category ([Name]) VALUES ('GPU'), ('CPU'), ('RAM');
 INSERT INTO TransactionReason (Reason) VALUES ('Delivery'), ('Return'), ('Stock adjustment');
 -- Förutbestämd testdata:
---INSERT INTO Popularity (Popularity) VALUES (10), (15), (20), (40), (35), (30), (100), (200), (150);
 INSERT INTO Product (CategoryId, PopularityScore, [Name], Price) VALUES (1, 10, 'Voodoo 2', 399.99), (1, 20, 'GeForce', 449.99), (1, 15, 'Radeon', 349.99), (1, 5, 'Bobby-graphic', 49.99), (1, 3, 'Greger graphics', 99.99);
 INSERT INTO Product (CategoryId, PopularityScore, [Name], Price) VALUES (2, 35, 'Intel 300 MHz', 599.99), (2, 40, 'AMD 100 MHz', 299.99), (2, 30, 'Intel 333 MHz', 699.99), (2, 4, 'Bobby-Central possessing unit', 29.99), (2, 2, 'Greger CPU', 199.99);
 INSERT INTO Product (CategoryId, PopularityScore, [Name], Price) VALUES (3, 100, 'Noname 128 MB', 49.99), (3, 200, 'Intel 512 MB', 199.99), (3, 150, 'MyMemory 1024 MB', 249.99), (3, 20, 'Boby-b-Good memory 384 MB', 249.99), (3, 10, 'Greger Memory 1024 MB', 149.99);
---INSERT INTO Popularity (ProductId, Popularity) VALUES (1, 10), (2, 15), (3, 20), (4, 40), (5, 35), (6, 30), (7, 100), (8, 200), (9, 150);
---DELETE FROM Product;
---SELECT * FROM Popularity;
---SELECT * FROM Product;
 INSERT INTO Costumer ([Name], Mail, [Address]) VALUES ('Boris', 'boris@mail.com', 'Borisgatan 2');
 INSERT INTO Costumer ([Name], Mail, [Address]) VALUES ('Greger', 'greger@mail.com', 'Gregervägen 3');
 INSERT INTO Storage (ProductId, Amount) VALUES (1, 10), (2, 20), (3, 50), (4, 60), (5, 70), (6, 100), (7, 100), (8, 100), (9, 100);
@@ -143,9 +169,9 @@ BEGIN
 END
 
 -- Test:
-EXEC ListProducts @SelectedCategoryId = 1, @RowsToSkip = 1, @RowsAmount = 2;
+EXEC ListProducts @SelectedCategoryId = 2, @RowsToSkip = 0, @RowsAmount = 1;
 
-
+-- TODO: Hantera exeptions: @RowsToSkip < 0, @RowsAmount <= 0?
 -- SELECT * FROM Product;
 -- SELECT * FROM 
 
@@ -214,6 +240,8 @@ SELECT * FROM Costumer;
 -- Kolla @.
 --CREATE OR ALTER PROCEDURE NewUser
 --@UserName
+-- TODO: Returnera det senaste skapta Id:t, kan vara sjysst ifall man ska logga in direkt efter.
+-- TODO: Mail confirmed.
 -- TODO: Fortsätt här!
 --SELECT * FROM Costumer
 -- Lägger till ny användare.
