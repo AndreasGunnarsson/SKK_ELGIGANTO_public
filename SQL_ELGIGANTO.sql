@@ -11,7 +11,6 @@ DROP TABLE TransactionReason;
 DROP TABLE Costumer;
 DROP TABLE Category;
 DROP TABLE [Order];
---DROP TABLE OrderProduct;
 DROP TABLE Storage;
 DROP TABLE Product;
 
@@ -30,6 +29,8 @@ DROP PROC ListCartContent;
 DROP PROC CheckoutCart;
 DROP PROC CreateNewCostumer;
 DROP PROC UpdateCostumer;
+DROP PROC PopularityReport;
+DROP PROC ReturnReport;
 
 ----------------------------------------------------- Tables:
 CREATE TABLE Category
@@ -125,6 +126,7 @@ SELECT * FROM Product
 INSERT INTO Product (CategoryId, [Name], Price) VALUES (1, 'fef', 0.1)
 INSERT INTO Popularity (ProductId) VALUES (12);			-- Test for constraint */
 
+-- TODO: Rename StorageTransaction.Amount to AdjustedAmount.
 -- TODO: Gör SEQUENCE Id redan på Cart istället för i [Order]? Nackdel: Man går miste om en PK. Fyller den någon funktion i Cart? Fördel: Man gör inte mista om någon funktionalitet. Kanske bättre performance i slutändan?
 -- TODO: Eftersom att man ha flera Orders som hör till samma så borde Order.Ordernumber inte vara RAND; kan flera rader med samma order får olika Ordernumber annars vilket inte ska inträffa.
 -- TODO: Förklara "Amount int NOT NULL DEFAULT 1 CONSTRAINT CHK_Cart_Amount CHECK (Amount >= 0))" och relationen med SP:n AddToCart.
@@ -180,7 +182,7 @@ INSERT INTO Storage (ProductId, Amount) VALUES (1, 10), (2, 20), (3, 50), (4, 60
 INSERT INTO StorageTransaction (ProductId, Amount, ReasonId) VALUES (1, 10, 3), (2, 20, 3), (3, 50, 3), (4, 60, 3), (5, 70, 3), (6, 100, 3), (7, 100, 3), (8, 100, 3), (9, 100, 3), (10, 100, 3), (11, 100, 3), (12, 100, 3), (13, 100, 3), (14, 100, 3), (15, 100, 3);
 INSERT INTO Costumer ([Name], Mail, [Address]) VALUES ('Boris', 'boris@mail.com', 'Borisgatan 2B');
 INSERT INTO Costumer ([Name], Mail, [Address]) VALUES ('Greger', 'greger@mail.com', 'Gregervägen 3C');
-INSERT INTO Costumer ([Name], Mail, [Address]) VALUES ('Klabbe', 'Klabbe@klabbmail.com', 'Bollvägen 12A');
+INSERT INTO Costumer ([Name], Mail, [Address]) VALUES ('Klabbe', 'klabbe@klabbmail.com', 'Bollvägen 12A');
 
 ----------------------------------------------------- CreateNewCostumer SP:
 CREATE OR ALTER PROCEDURE CreateNewCostumer
@@ -393,19 +395,20 @@ CREATE OR ALTER PROCEDURE ListCartContent
 @CurrentUserId int
 AS
 BEGIN
-	SELECT Product.Id, Product.[Name], Product.Price AS PrinceSingleUnit, Cart.Amount, SUM(Product.Price * Cart.Amount) AS TotalPriceRow, SUM(Product.Price * Cart.Amount) OVER() AS TotalPrice
+	SELECT Product.Id, Product.[Name], Product.Price AS PrinceSingleUnit, Cart.Amount, Product.Price * Cart.Amount AS TotalPriceRow, SUM(Product.Price * Cart.Amount) OVER() AS TotalPrice
 		FROM Cart
 		INNER JOIN Product ON Product.Id = Cart.ProductId
 		WHERE Cart.CostumerId = @CurrentUserId
-		GROUP BY Product.Id, Product.[Name], Product.Price, Cart.Amount;
+--		GROUP BY Product.Id, Product.[Name], Product.Price, Cart.Amount;
 END
+GO
 
 -- Test:
-EXEC ListCartContent @CurrentUserId = 2;
+EXEC ListCartContent @CurrentUserId = 1;
 EXEC AddToCart @CurrentUserId = 1, @ProductId = 1, @ProductAmount = 2;
-EXEC AddToCart @CurrentUserId = 2, @ProductId = 3, @ProductAmount = 2;
-EXEC AddToCart @CurrentUserId = 1, @ProductId = 2, @ProductAmount = 2;
-EXEC AddToCart @CurrentUserId = 2, @ProductId = 4, @ProductAmount = 2;
+EXEC AddToCart @CurrentUserId = 2, @ProductId = 3, @ProductAmount = 3;
+EXEC AddToCart @CurrentUserId = 1, @ProductId = 2, @ProductAmount = 4;
+EXEC AddToCart @CurrentUserId = 2, @ProductId = 4, @ProductAmount = 5;
 SELECT * FROM Cart;
 SELECT * FROM Product;
 -- List the content in a cart with a specific Id.
@@ -460,6 +463,8 @@ BEGIN
 		END
 	END
 END
+GO
+
 -- Test:
 EXEC CheckoutCart @CurrentUserId = 3;
 
@@ -536,6 +541,7 @@ BEGIN
 		PRINT 'Not a valid option';
 	END
 END
+GO
 
 -- TODO: Se över if-satser och NULL-värden i parametrarna.
 
@@ -678,8 +684,8 @@ END
 GO
 
 -- Test:
-EXEC UpdateOrder @SelectedOrderId = 1, @SelectedProductId = 4, @ReturnAmount = 1;
-EXEC ViewOrder @SelectedOrderId = 1;
+EXEC UpdateOrder @SelectedOrderId = 2, @SelectedProductId = 2, @ReturnAmount = 1;
+EXEC ViewOrder @SelectedOrderId = 2;
 
 SELECT * FROM [Order];
 SELECT * FROM Storage;
@@ -738,18 +744,54 @@ BEGIN
 	SELECT
 		DENSE_RANK() OVER(PARTITION BY Product.CategoryId ORDER BY Product.PopularityScore DESC) AS [Rank],
 		Category.[Name] AS Category,
-		Product.[Name],
+		Product.[Name] AS ProductName,
 		Product.PopularityScore AS Score
 	FROM Product
-	INNER JOIN Category ON Category.Id = Product.CategoryId;
-	-- TOP 5 med högst Popularity.PopularityScore.
-	-- Kan börja med TOP 3!
-	-- SELECT * FROM Product
+	INNER JOIN Category ON Category.Id = Product.CategoryId
+	WHERE (@CategoryId IS NULL OR (@CategoryId = CategoryId));
 END
-UPDATE Product SET PopularityScore = 10 WHERE Id = 4;
+GO
+
+EXEC PopularityReport @CategoryId = 2;
 SELECT * FROM Product;
+
+-- TODO: Fungerar men DENSE_RANK()
+
 ----------------------------------------------------- ReturnReport
--- TOP 5 mest returnerade för vald kategori.
+CREATE OR ALTER PROCEDURE ReturnReport
+@CategoryId int = NULL,
+@OrderBy bit = 0				-- 0 = Order by amount of returns. 1 = Order by the total cost of returns.
+AS
+BEGIN
+	SELECT
+		Product.Id,
+		Product.[Name],
+		SUM(StorageTransaction.Amount) AS AmountOfReturns,
+		SUM(StorageTransaction.Amount * Product.Price) AS TotalCost
+		FROM StorageTransaction
+		INNER JOIN Product ON Product.Id = StorageTransaction.ProductId
+		WHERE (@CategoryId IS NULL AND StorageTransaction.ReasonId = 2 OR (@CategoryId = Product.CategoryId AND StorageTransaction.ReasonId = 2))
+		GROUP BY Product.Id, Product.[Name]
+		ORDER BY
+			CASE WHEN @OrderBy = 0 THEN SUM(StorageTransaction.Amount) END DESC,
+			CASE WHEN @OrderBy = 1 THEN SUM(StorageTransaction.Amount * Product.Price) END DESC
+--	ELSE
+	--CASE WHEN @SortOrder = 1 AND @SortColumn = 0 THEN Product.PopularityScore END DESC,
+END
+GO
+
+-- Test:
+EXEC ReturnReport @CategoryId = 1, @OrderBy = 1;
+SELECT * FROM Product;
+SELECT * FROM StorageTransaction;
+
+SELECT *
+	FROM StorageTransaction
+	INNER JOIN Product ON Product.Id = StorageTransaction.ProductId
+	WHERE Product.CategoryId = 1 AND StorageTransaction.ReasonId = 2
+	--GROUP BY Product.Id, Product.[Name], StorageTransaction.Amount
+-- TODO: TotalCost är en rätt så ful kolumn.
+-- TODO: TOP 5 mest returnerade för vald kategori.
 -- Använd "window functions (ascoolt!, men utanför kursen), table functions, loopa i en SP och fylla på en tabellvariabel m.m." för att visa TOP 5 i för varje kategori i 
 ----------------------------------------------------- CategoryReport
 
