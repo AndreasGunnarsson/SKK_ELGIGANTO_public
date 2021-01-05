@@ -11,6 +11,7 @@ DROP TABLE TransactionReason;
 DROP TABLE Costumer;
 DROP TABLE Category;
 DROP TABLE [Order];
+--DROP TABLE OrderProduct;
 DROP TABLE Storage;
 DROP TABLE Product;
 
@@ -27,7 +28,7 @@ DROP PROC AddToCart;
 DROP PROC NewUser;
 DROP PROC ListCartContent;
 DROP PROC CheckoutCart;
-DROP PROC CreateNewUser;
+DROP PROC CreateNewCostumer;
 DROP PROC UpdateCostumer;
 
 ----------------------------------------------------- Tables:
@@ -60,33 +61,39 @@ CREATE TABLE Cart
 );
 CREATE TABLE [Order]
 (
---	Id int PRIMARY KEY IDENTITY(1,1),
-	Id int NOT NULL,					-- TODO: PK?
+	Id int PRIMARY KEY IDENTITY(1,1),
+	OrderId int NOT NULL,					-- TODO: PK?
+	Ordernumber int NOT NULL,
 	ProductId int NOT NULL,
 	CostumerId int NOT NULL,
-	Ordernumber int NOT NULL,
 	Amount int NOT NULL,
 	Delivered bit NOT NULL DEFAULT 0,
-	ReturnAmount int NOT NULL DEFAULT 0,					-- TODO: Se över constraints.
-	CONSTRAINT CHK_Order_ReturnAmount CHECK (ReturnAmount >= 0 AND ReturnAmount <= Amount)	-- Instead of using a CONSTRAINT on just one column it's used on the whole table. Needed if we want to compare values from different columns.
+--	ReturnAmount int NOT NULL DEFAULT 0,
+	-- TODO: Tas de bort efter? Ja. Man kan fortfarande göra en rapport utifrån StorageTransaction.
+	-- Kolumnen behövs inte ens?
+--	CONSTRAINT CHK_Order_ReturnAmount CHECK (ReturnAmount >= 0 AND ReturnAmount <= Amount)	-- Instead of using a CONSTRAINT on just one column it's used on the whole table. Needed if we want to compare values from different columns.
 );
 /*CREATE TABLE [Order]
 (
 	Id int PRIMARY KEY IDENTITY(1,1),
-	OrderProductId int NOT NULL,
-	CostumerId int NOT NULL,
+--	OrderId int NOT NULL,					-- TODO: PK?
+--	OrderProductIdId int NOT NULL,			-- TODO: Snyggt namn?
 	Ordernumber int NOT NULL,
+--	ProductId int NOT NULL,
+	CostumerId int NOT NULL,
 --	Amount int NOT NULL,
 	Delivered bit NOT NULL DEFAULT 0,
---	ReturnAmount int,					-- TODO: Se över constraints.
+--	ReturnAmount int NOT NULL DEFAULT 0,
+--	CONSTRAINT CHK_Order_ReturnAmount CHECK (ReturnAmount >= 0 AND ReturnAmount <= Amount)	-- Instead of using a CONSTRAINT on just one column it's used on the whole table. Needed if we want to compare values from different columns.
 );
 CREATE TABLE OrderProduct
 (
-	Id int NOT NULL,
+	Id int PRIMARY KEY IDENTITY(1,1),
+	OrderId int NOT NULL,
 	ProductId int NOT NULL,
 	Amount int NOT NULL,
-	ReturnAmount int
-	CONSTRAINT CHK_OrderProduct_ReturnAmount CHECK (ReturnAmount > 0 AND ReturnAmount <= Amount)	-- Instead of using a CONSTRAINT on just one column it's used on the whole table. Needed if we want to compare values from different columns.
+	ReturnAmount int NOT NULL DEFAULT 0,
+	CONSTRAINT CHK_OrderProduct_ReturnAmount CHECK (ReturnAmount >= 0 AND ReturnAmount <= Amount)	-- Instead of using a CONSTRAINT on just one column it's used on the whole table. Needed if we want to compare values from different columns.
 );*/
 -- Använd en self join i [Order] istället?
 -- Om man sätter ReturnAmount till DEFAULT 0 så löser sig allt som har med SPn "NewTransaction" att göra?
@@ -145,6 +152,8 @@ INSERT INTO Popularity (ProductId) VALUES (12);			-- Test for constraint */
 ALTER TABLE Product ADD CONSTRAINT FK_Product_Category FOREIGN KEY (CategoryId) REFERENCES Category(Id);
 ALTER TABLE [Order] ADD CONSTRAINT FK_Order_Product FOREIGN KEY (ProductId) REFERENCES Product(Id);
 ALTER TABLE [Order] ADD CONSTRAINT FK_Order_Costumer FOREIGN KEY (CostumerId) REFERENCES Costumer(Id);
+--ALTER TABLE OrderProduct ADD CONSTRAINT FK_OrderProduct_Order FOREIGN KEY (OrderId) REFERENCES [Order](Id);
+--ALTER TABLE OrderProduct ADD CONSTRAINT FK_OrderProduct_Product FOREIGN KEY (ProductId) REFERENCES Product(Id);
 ALTER TABLE Cart ADD CONSTRAINT FK_Cart_Costumer FOREIGN KEY (CostumerId) REFERENCES Costumer(Id);
 ALTER TABLE Cart ADD CONSTRAINT FK_Cart_Product FOREIGN KEY (ProductId) REFERENCES Product(Id);
 ALTER TABLE Storage ADD CONSTRAINT FK_Storage_Product FOREIGN KEY (ProductId) REFERENCES Product(Id);
@@ -173,8 +182,8 @@ INSERT INTO Costumer ([Name], Mail, [Address]) VALUES ('Boris', 'boris@mail.com'
 INSERT INTO Costumer ([Name], Mail, [Address]) VALUES ('Greger', 'greger@mail.com', 'Gregervägen 3C');
 INSERT INTO Costumer ([Name], Mail, [Address]) VALUES ('Klabbe', 'Klabbe@klabbmail.com', 'Bollvägen 12A');
 
------------------------------------------------------ CreateNewUser SP:
-CREATE OR ALTER PROCEDURE CreateNewUser
+----------------------------------------------------- CreateNewCostumer SP:
+CREATE OR ALTER PROCEDURE CreateNewCostumer
 @UserName varchar(50),
 @Email varchar(50),
 @Address varchar(50)
@@ -184,9 +193,9 @@ BEGIN
 END
 
 -- Tets:
-EXEC CreateNewUser @UserName = 'Turtle', @Email = 'turtle1@tmntmail.com', @Address = 'Kloak 4';
---EXEC CreateNewUser @UserName = 'Greger', @Email = 'greger@mail.com', @Address = 'Gregervägen 3C';
---EXEC CreateNewUser @UserName = 'Klabbe', @Email = 'Klabbe@klabbmail.com', @Address = 'Bollvägen 12A';
+EXEC CreateNewCostumer @UserName = 'Turtle', @Email = 'turtle1@tmntmail.com', @Address = 'Kloak 4';
+--EXEC CreateNewCostumer @UserName = 'Greger', @Email = 'greger@mail.com', @Address = 'Gregervägen 3C';
+--EXEC CreateNewCostumer @UserName = 'Klabbe', @Email = 'Klabbe@klabbmail.com', @Address = 'Bollvägen 12A';
 SELECT * FROM Costumer;
 
 -- TODO: Returnera det senaste skapta Id:t, kan vara sjysst ifall man ska logga in direkt efter?
@@ -228,11 +237,13 @@ CREATE OR ALTER PROCEDURE ListProducts
 @RowsAmountToReturn int = 3
 AS
 BEGIN
-	SELECT Product.Id, [Name], Price FROM Product
+	SELECT Product.Id AS ProductId, [Name] AS ProductName, Price
+	FROM Product
 	WHERE CategoryId = @SelectedCategoryId
 	ORDER BY PopularityScore DESC
 	OFFSET @RowsToSkip ROWS FETCH NEXT @RowsAmountToReturn ROWS ONLY;		-- Pagination. OFFSET = The number of rows to skip. FETCH = The amount of rows after the OFFSET that's returned.
 END
+GO
 
 -- Test:
 EXEC ListProducts @SelectedCategoryId = 1, @RowsToSkip = 0, @RowsAmountToReturn = 5;
@@ -258,7 +269,7 @@ CREATE OR ALTER PROCEDURE SearchProduct
 @RowsAmountToReturn int = 3					-- Number of rows after @RowsToSkip to include.
 AS
 BEGIN
-	SELECT Product.Id, Product.[Name], Product.Price
+	SELECT Product.Id AS ProductId, Product.[Name] AS ProductName, Product.Price
 	FROM Product
 	INNER JOIN Storage ON Storage.ProductId = Product.Id
 	WHERE
@@ -274,6 +285,7 @@ BEGIN
 		CASE WHEN @SortOrder = 0 AND @SortColumn = 2 THEN Product.[Name] END
 	OFFSET @RowsToSkip ROWS FETCH NEXT @RowsAmountToReturn ROWS ONLY;
 END
+GO
 
 -- Test:
 EXEC SearchProduct @RowsToSkip = 0, @RowsAmountToReturn = 5;
@@ -326,6 +338,7 @@ EXEC ProductDetail @SelectedProductId = 5;
 SELECT * FROM Product;
 -- Produktdetaljer. Skriv in ett Product.Id.
 	-- Ska visa Name, Category, Price och lagerstatus.
+
 ----------------------------------------------------- AddToCart SP:
 CREATE OR ALTER PROCEDURE AddToCart
 @CurrentUserId int,					-- When no "=" is used an argument with a value is required (the argument can still be set to NULL whel calling the SP).
@@ -364,6 +377,7 @@ END
 EXEC AddToCart @CurrentUserId = 1, @ProductId = 6, @ProductAmount = 2;
 SELECT * FROM Cart;
 SELECT * FROM Product;
+-- TODO: Rename CurrentUserId to CurrentCostumerId.
 -- TODO: Add a feature to remove the card instantly (withouh having to reach 0).
 -- TODO: Borde kolla ifall Storage.Amount > 0.
 
@@ -400,6 +414,7 @@ SELECT * FROM Product;
 CREATE SEQUENCE OrderSequence
 	START WITH 1
 	INCREMENT BY 1;
+GO
 
 CREATE OR ALTER PROCEDURE CheckoutCart
 @CurrentUserId int
@@ -409,66 +424,108 @@ BEGIN
 	BEGIN
 		DECLARE @OrderIdSequence int = NEXT VALUE FOR OrderSequence;
 		DECLARE @RandomOrdernumber int = CAST(RAND() * 100000000 + @CurrentUserId AS int);
-	--	SET @RandomOrdernumber = ;
-		PRINT @OrderIdSequence;			-- DEBUG
-		PRINT @RandomOrdernumber;		-- DEBUG
+--		PRINT @OrderIdSequence;			-- DEBUG
+--		PRINT @RandomOrdernumber;		-- DEBUG
 
-		INSERT INTO [Order] (Id, CostumerId, ProductId, Ordernumber, Amount)
+		INSERT INTO [Order] (OrderId, CostumerId, ProductId, Ordernumber, Amount)
 			SELECT @OrderIdSequence, CostumerId, ProductId, @RandomOrdernumber, Amount
 			FROM Cart
 			WHERE Cart.CostumerId = @CurrentUserId;
-	/*	INSERT INTO [Order] (CostumerId, ProductId, Ordernumber, Amount)
-			SELECT CostumerId, ProductId, @RandomOrdernumber, Amount
-			FROM Cart
-			WHERE Cart.CostumerId = @CurrentUserId;*/
+
 		DELETE FROM Cart
 			WHERE Cart.CostumerId = @CurrentUserId;
---		EXEC UpdatePopularity @ProductId = 7, @AddedScore = 1, @ProductAmountMultiplier = 1;
+
+		DECLARE @LoopCounter int = 1;
+--		PRINT @LoopCounter;					-- DEBUG.
+
+		CREATE TABLE #temptable
+			(Id int PRIMARY KEY IDENTITY(1,1), ProductId int NOT NULL, Amount int NOT NULL);
+
+		INSERT INTO #temptable (ProductId, Amount)
+			SELECT [Order].ProductId, [Order].Amount
+			FROM [Order]
+			WHERE [Order].OrderId = @OrderIdSequence;
+
+--		SELECT * FROM #temptable;			-- DEBUG.
+
+		WHILE @LoopCounter <= (SELECT COUNT(Id) FROM #temptable)
+		BEGIN
+			DECLARE @Product int = (SELECT ProductId FROM #temptable WHERE Id = @LoopCounter);
+--			PRINT @Product;
+			DECLARE @Amount int = (SELECT Amount FROM #temptable WHERE Id = @LoopCounter);
+--			PRINT @Amount;
+			EXEC UpdatePopularity @ProductId = @Product, @AddedScore = 10, @ProductAmountMultiplier = @Amount;
+			SET @LoopCounter += 1;
+--			PRINT @LoopCounter;			--DEBUG
+		END
 	END
 END
 -- Test:
-EXEC CheckoutCart @CurrentUserId = 1;
+EXEC CheckoutCart @CurrentUserId = 3;
 
 SELECT * FROM Cart;
 SELECT * FROM [Order];
+SELECT * FROM Product;
 SELECT * FROM sys.sequences WHERE [name] = 'OrderSequence';
 SELECT current_value FROM sys.sequences WHERE [name] = 'OrderSequence';
 SELECT NEXT VALUE FOR OrderSequence;
+EXEC AddToCart @CurrentUserId = 1, @ProductId = 1, @ProductAmount = 2;
+EXEC AddToCart @CurrentUserId = 2, @ProductId = 3, @ProductAmount = 2;
+EXEC AddToCart @CurrentUserId = 1, @ProductId = 2, @ProductAmount = 2;
+EXEC AddToCart @CurrentUserId = 2, @ProductId = 4, @ProductAmount = 2;
+EXEC AddToCart @CurrentUserId = 3, @ProductId = 4, @ProductAmount = 5;
 
--- TODO: UpdatePopularity  -  Behövs antagligen en IF om man ska köra UpdatePopularity också. Behöver man använda temporära tabeller och WHILE igen?
 -- TODO: Borde kolla ifall Storage.Amount > 0. Kan hämta att värdet ändrats under tiden som man gör saker. Kanske går att lägga en order men man borde iaf få en varning?
 -- TODO: Random-algoritmen är rätt dålig. Borde baseras på datum eller något för att minimera risken att duplicates uppstår. Datum, CostumerId + Random (4 siffror).
 -- TODO: borde returnera ordernummer eller Id?
------------------------------------------------------ Undandled orders SP:
+----------------------------------------------------- Bonus: Undandled orders SP:
 -- Används av personalen för att hantera Ordrar som lagts.
-
 ----------------------------------------------------- NewTransaction SP:
 CREATE OR ALTER PROCEDURE NewTransaction
---@TransactionReason int = NULL,
-@SelectedOrdernumber int = NULL,
+@TransactionReason int,				-- 1 = Delivery, 2 = Return, 3 = Stock adjustment
+-- TODO: Använd också [Order].OrderId!
+--@SelectedOrdernumber int = NULL,		-- TODO: Bonus.
+@SelectedOrderId int = NULL,
+--@ReturnAmount int = NULL,
 @ProductId int = NULL,
 @Amount int = NULL
 AS
 BEGIN
+	IF @TransactionReason = 1 AND @SelectedOrderId IS NOT NULL
+	BEGIN
+		PRINT 'Delivery';
+		INSERT INTO StorageTransaction (ProductId, Amount, ReasonId)
+			SELECT ProductId, (Amount * -1), 1
+			FROM [Order]
+			WHERE [Order].OrderId = @SelectedOrderId;
+	END
+	ELSE IF @TransactionReason = 2 AND @SelectedOrderId IS NOT NULL AND @ProductId IS NOT NULL AND @Amount > 0 
+	BEGIN
+		PRINT 'Return';
+		INSERT INTO StorageTransaction (ProductId, Amount, ReasonId)
+			SELECT ProductId, @Amount, 2
+			FROM [Order]
+			WHERE [Order].OrderId = @SelectedOrderId AND [Order].ProductId = @ProductId;
+	END
 --	PRINT @SelectedOrdernumber;
-	IF @SelectedOrdernumber IS NOT NULL
+/*	IF @SelectedOrdernumber IS NOT NULL
 	BEGIN
 		PRINT 'OrderId is NOT NULL';
-		IF IS NOT NULL (SELECT TOP 1 [Order].ReturnAmount FROM [Order] WHERE [Order].Ordernumber = @SelectedOrdernumber)	-- TODO! Använder inte längre NULL utan är 0 by default.
+		IF (SELECT TOP 1 [Order].ReturnAmount FROM [Order] WHERE [Order].Ordernumber = @SelectedOrdernumber) = 0
 		-- Lösning: IS NOT NULL i WHERE?
 		BEGIN
 			PRINT 'Delivery (not a Return)';
 			INSERT INTO StorageTransaction (ProductId, Amount, ReasonId)
 			SELECT ProductId, (Amount * -1), 1 FROM [Order] WHERE [Order].Ordernumber = @SelectedOrdernumber;
 		END
-		ELSE IF NULL IN (SELECT [Order].ReturnAmount FROM [Order] WHERE [Order].Ordernumber = @SelectedOrdernumber)
+		ELSE IF (SELECT [Order].ReturnAmount FROM [Order] WHERE [Order].Ordernumber = @SelectedOrdernumber) > 0
 		BEGIN
 			PRINT 'Return';
 			INSERT INTO StorageTransaction (ProductId, Amount, ReasonId)
 			SELECT ProductId, ReturnAmount, 2 FROM [Order] WHERE [Order].Ordernumber = @SelectedOrdernumber;
 		END
-	END
-	ELSE IF @ProductId IS NOT NULL AND @Amount IS NOT NULL
+	END */
+	ELSE IF @TransactionReason = 3 AND @ProductId IS NOT NULL AND @Amount IS NOT NULL
 	BEGIN
 		PRINT 'Stock adjustment';
 		INSERT INTO StorageTransaction (ProductId, Amount, ReasonId)
@@ -483,9 +540,9 @@ END
 -- TODO: Se över if-satser och NULL-värden i parametrarna.
 
 -- Test:
-EXEC NewTransaction @SelectedOrdernumber = 16654526;
-EXEC NewTransaction @ProductId = 2, @Amount = 10;
-UPDATE [Order] SET [Order].ReturnAmount = 2 WHERE Id = 2;
+--EXEC NewTransaction @SelectedOrdernumber = 16654526;
+EXEC NewTransaction @TransactionReason = 1, @ProductId = 2, @Amount = 10;
+--UPDATE [Order] SET [Order].ReturnAmount = 2 WHERE Id = 2;
 SELECT * FROM [Order];
 SELECT * FROM StorageTransaction;
 SELECT * FROM TransactionReason;
@@ -508,55 +565,60 @@ SELECT * FROM TransactionReason;
 
 ----------------------------------------------------- Deliver order SP:
 CREATE OR ALTER PROCEDURE DeliverOrder
-@SelectedOrdernumber int
+--@SelectedOrdernumber int,		-- TODO: Bonus.
+@SelectedOrderId int
 AS
 BEGIN
 --	SELECT * FROM [Order];
-	IF 0 IN (SELECT [Order].Delivered FROM [Order] WHERE [Order].Ordernumber = @SelectedOrdernumber)
+	IF 0 IN (SELECT [Order].Delivered FROM [Order] WHERE [Order].OrderId = @SelectedOrderId)
 	BEGIN
-		PRINT 'HERE';
+		PRINT 'Delivered is 0';			-- DEBUG.
 		UPDATE [Order] SET [Order].Delivered = 1
-			WHERE [Order].Ordernumber = @SelectedOrdernumber;
+			WHERE [Order].OrderId = @SelectedOrderId;
+
+		EXEC NewTransaction @TransactionReason = 1, @SelectedOrderId = @SelectedOrderId;
 
 		DECLARE @LoopCounter int = 1;
-		PRINT @LoopCounter;					-- DEBUG.
-
-		CREATE TABLE #temptable
+		PRINT CONCAT ('LoopCounter: ', @LoopCounter);					-- DEBUG.
+		
+		CREATE TABLE #temptable2
 			(Id int PRIMARY KEY IDENTITY(1,1), ProductId int NOT NULL, Amount int NOT NULL);
 
-		INSERT INTO #temptable (ProductId, Amount)
+		INSERT INTO #temptable2 (ProductId, Amount)
 			SELECT [Order].ProductId, [Order].Amount
 			FROM [Order]
-			WHERE [Order].Ordernumber = @SelectedOrdernumber;
+			WHERE [Order].OrderId = @SelectedOrderId;
 
-		SELECT * FROM #temptable;			-- DEBUG.
+		SELECT * FROM #temptable2;			-- DEBUG.
 
-		WHILE @LoopCounter <= (SELECT COUNT(Id) FROM [Order] WHERE [Order].Ordernumber = @SelectedOrdernumber)
+		WHILE @LoopCounter <= (SELECT COUNT(Id) FROM #temptable2)
 		BEGIN
 			UPDATE Storage SET Storage.Amount -=
 			(
-				SELECT #temptable.Amount
-				FROM #temptable
-				WHERE #temptable.Id = @LoopCounter
+				SELECT #temptable2.Amount
+				FROM #temptable2
+				WHERE #temptable2.Id = @LoopCounter
 			)
 			WHERE Storage.ProductId =
 			(
-				SELECT #temptable.ProductId
-				FROM #temptable
-				WHERE #temptable.Id = @LoopCounter
+				SELECT #temptable2.ProductId
+				FROM #temptable2
+				WHERE #temptable2.Id = @LoopCounter
 			)
 			SET @LoopCounter += 1;
-			PRINT @LoopCounter;			--DEBUG
+			PRINT CONCAT('LoopCounter (inside): ', @LoopCounter);					-- DEBUG.
 		END
 	END
 END
 
 -- Test:
-EXEC DeliverOrder @SelectedOrdernumber = 45410858;
-SELECT * FROM Cart;
+EXEC DeliverOrder @SelectedOrderId = 2;
+--EXEC DeliverOrder @SelectedOrdernumber = 45410858;
 SELECT * FROM [Order];
 SELECT * FROM Storage;
 SELECT * FROM StorageTransaction;
+
+SELECT * FROM Cart;
 SELECT * FROM TransactionReason;
 UPDATE [Order] SET [Order].Delivered = 0;
 DELETE FROM [Order] WHERE Id = 3;
@@ -565,27 +627,65 @@ UPDATE [Order] SET [Order].Amount = 10 WHERE Id = 1;
 -- TODO: Testa vad som är effektivast i IF-satsen, IN, TOP 1 och =?
 -- TODO: Måste lägga till "NewTransaction" någonstans.
 
------------------------------------------------------ ViewOrder SP:
+----------------------------------------------------- Bonus: ViewOrder SP:
+CREATE OR ALTER PROCEDURE ViewOrder
+@SelectedOrderId int
+AS
+BEGIN
+	SELECT
+		Ordernumber,
+		ProductId,
+		Product.[Name] AS ProductName,
+		Amount AS AmountOrdered,
+		DeliveryStatus =
+		CASE Delivered
+			WHEN 0 THEN 'Not delivered'
+			WHEN 1 THEN 'Delivered'
+		END
+	FROM [Order]
+	INNER JOIN Product ON [Order].ProductId = Product.Id
+	WHERE OrderId = @SelectedOrderId;
+END
+GO
+
+EXEC ViewOrder @SelectedOrderId = 2;
+SELECT * FROM [Order];
+-- Bonus: Ordernumber
 -- Visar för användaren statusen på ordern (delivered eller ej).
 -- Används också fö att skriva ut saker som är relevanta för UpdateOrder.
 ----------------------------------------------------- UpdateOrder SP:
 CREATE OR ALTER PROCEDURE UpdateOrder
 --@CurrentUserId int,
-@ProductId int,
-@OrderNumber int,
+@SelectedOrderId int,
+@SelectedProductId int,
+--@OrderNumber int,
 @ReturnAmount int
 AS
 BEGIN
-	IF (SELECT Delivered FROM [Order] WHERE [Order].CostumerId = @OrderNumber AND [Order].ProductId = @ProductId) = 1
-		PRINT 'HERE';
-	ELSE
-		PRINT 'Error: The order has to be delivered before it can be returned.';
-END
+	IF (SELECT Delivered FROM [Order] WHERE [Order].OrderId = @SelectedOrderId AND [Order].ProductId = @SelectedProductId) = 1 AND @ReturnAmount <= (SELECT Amount FROM [Order] WHERE [Order].OrderId = @SelectedOrderId AND [Order].ProductId = @SelectedProductId) AND @ReturnAmount > 0
+	BEGIN
+		PRINT 'You are here';
+		UPDATE [Order]
+			SET Amount -= @ReturnAmount
+			WHERE [Order].OrderId = @SelectedOrderId AND [Order].ProductId = @SelectedProductId;
+		UPDATE Storage
+			SET Amount += @ReturnAmount
+			WHERE Storage.ProductId = @SelectedProductId;
 
-EXEC UpdateOrder @ProductId = 1, @OrderNumber = 38, @ReturnAmount = 1;
+		EXEC NewTransaction @TransactionReason = 2, @SelectedOrderId = @SelectedOrderId, @ProductId = @SelectedProductId, @Amount = @ReturnAmount;
+	END
+END
+GO
+
+-- Test:
+EXEC UpdateOrder @SelectedOrderId = 1, @SelectedProductId = 4, @ReturnAmount = 1;
+EXEC ViewOrder @SelectedOrderId = 1;
 
 SELECT * FROM [Order];
+SELECT * FROM Storage;
+SELECT * FROM StorageTransaction;
 
+-- Borde göra något mer så att de som arbeter har koll på vad som hänt?
 -- Man borde också kunna använda Ordernumber?
 -- Används ifall en kund vill returnera en vara.
 -- Går att uppdatera [Order].ReturnAmount med denna.
@@ -599,35 +699,34 @@ SELECT * FROM [Order];
 
 ----------------------------------------------------- Storage adjustment SP:
 CREATE OR ALTER PROCEDURE StorageAdjustment
-@SelectedProductId int = NULL,
-@NewAmount int = NULL,
-@IsIncDec bit = 1
+@ProductId int,
+@NewAmount int,
+@IsIncDec bit = 1		-- 1 = Increment/decrement amount. 0 = set a value directly.
+-- TODO: StorageTransaction bryr sig endast om med hur mycket något ändras.
 AS
 BEGIN
-IF @SelectedProductId IS NOT NULL AND @NewAmount IS NOT NULL AND @IsIncDec = 1
-BEGIN
-	PRINT 'Valid';
-	EXEC NewTransaction @ProductId = @SelectedProductId, @Amount = @NewAmount;
-	-- Problem: Since we write a direct value to SET the Newtransaction.Amount is wrong; this should show the difference.
-	-- NewTransaction hanterar endast diff-värden. Om man vill ha något annat än en diff måste man skriva detta i denna SP (StorageAdjustment).
-	-- Problem: We need error checking. We cant set a stock Amount that's below 0.
-	UPDATE Storage SET Storage.Amount += @NewAmount WHERE Storage.ProductId = @SelectedProductId;
+--	SELECT Amount + @NewAmount FROM Storage WHERE Storage.ProductId = @ProductId;
+	IF @IsIncDec = 1 AND (SELECT Amount + @NewAmount FROM Storage WHERE Storage.ProductId = @ProductId) >= 0
+	BEGIN
+		PRINT 'Here';
+		UPDATE Storage SET Storage.Amount += @NewAmount WHERE Storage.ProductId = @ProductId
+		EXEC NewTransaction @TransactionReason = 3, @ProductId = @ProductId, @Amount = @NewAmount;
+	END
+	ELSE IF @IsIncDec = 0 AND @NewAmount >= 0
+	BEGIN
+		PRINT 'IsIncDec 0';
+		DECLARE @Diff int = (SELECT @NewAmount - Amount FROM Storage WHERE ProductId = @ProductId)
+		PRINT @Diff;
+		UPDATE Storage SET Storage.Amount = @NewAmount WHERE Storage.ProductId = @ProductId
+		EXEC NewTransaction @TransactionReason = 3, @ProductId = @ProductId, @Amount = @Diff;
+	END
 END
-ELSE IF @SelectedProductId IS NOT NULL AND @NewAmount IS NOT NULL AND @IsIncDec = 0
-BEGIN
-	PRINT 'Valid2'
-	-- TODO: Will use a "full" value that's not just an increment/decrement.
-	-- We must first get the diff from the current Storage.Amount because that's what will be sent to the NewTransaction SP.
-	-- Behöver en Variabel som sparar värdet och en if-sats beroende på ifall värdet är positivt eller negativt.
-END
-ELSE
-	PRINT 'Not valid';
-END
+GO
 
-
-EXEC StorageAdjustment @SelectedProductId = 2, @NewAmount = 2, @IsIncDec = 1;
-SELECT * FROM StorageTransaction;
+-- Test:
+EXEC StorageAdjustment @ProductId = 2, @NewAmount = -2, @IsIncDec = 1;
 SELECT * FROM Storage;
+SELECT * FROM StorageTransaction;
 
 -- TODO: Borde skriva vilken användare som gjorde förändringen.
 
