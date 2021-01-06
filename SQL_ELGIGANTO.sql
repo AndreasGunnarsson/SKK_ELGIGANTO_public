@@ -31,6 +31,7 @@ DROP PROC CreateNewCostumer;
 DROP PROC UpdateCostumer;
 DROP PROC PopularityReport;
 DROP PROC ReturnReport;
+DROP PROC CategoryReport;
 
 ----------------------------------------------------- Tables:
 CREATE TABLE Category
@@ -108,7 +109,7 @@ CREATE TABLE StorageTransaction
 (
 	Id int PRIMARY KEY IDENTITY(1,1),
 	ProductId int NOT NULL,
-	[Time] datetime DEFAULT GETDATE(),
+	[Time] datetime2 DEFAULT SYSDATETIME(),				-- TODO: TESTA IFALL DET FUNKAR!
 	Amount int NOT NULL,
 	ReasonId int NOT NULL
 );
@@ -161,7 +162,10 @@ ALTER TABLE Cart ADD CONSTRAINT FK_Cart_Product FOREIGN KEY (ProductId) REFERENC
 ALTER TABLE Storage ADD CONSTRAINT FK_Storage_Product FOREIGN KEY (ProductId) REFERENCES Product(Id);
 ALTER TABLE StorageTransaction ADD CONSTRAINT FK_StorageTrasaction_Product FOREIGN KEY (ProductId) REFERENCES Product(Id);
 ALTER TABLE StorageTransaction ADD CONSTRAINT FK_StorageTransaction_Reason FOREIGN KEY (ReasonId) REFERENCES TransactionReason(Id);
+--CREATE NONCLUSTERED INDEX IX_Product_Name ON Product([Name]);
+--DROP INDEX IX_Product_Name ON Product;
 
+-- INDEX: Storage.ProductId (sökning och ProductDetail, StorageAdjustment). Finns redan ett icke-klustrat index då den är UNIQUE.
 -- TODO: Lägg in dessa i tabellerna ovan istället för att använda ALTER TABLE.
 -- TODO: ON DELETE CASCADE kan vara bra någonstans? Borde vara på Category ifall man nu skulle ta bort en hel kategori någon gång (men man vill inte köra DELETE utan hade varit grymmare ifall man satta NULL som Product.CategoryId).
 
@@ -171,15 +175,20 @@ ALTER TABLE StorageTransaction ADD CONSTRAINT FK_StorageTransaction_Reason FOREI
 -- Trigger ifall man editar Storage eller StorageTransaction som gör att man påverkar båda?
 -- Trigger mellan Cart och Order?
 
--- Hårdkodade värden:
+-- Test data:
 INSERT INTO Category ([Name]) VALUES ('GPU'), ('CPU'), ('RAM');
 INSERT INTO TransactionReason (Reason) VALUES ('Delivery'), ('Return'), ('Stock adjustment');
--- Förutbestämd testdata:
-INSERT INTO Product (CategoryId, PopularityScore, [Name], Price) VALUES (1, 10, 'Voodoo 2', 399.99), (1, 20, 'GeForce', 449.99), (1, 15, 'Radeon', 349.99), (1, 5, 'Bobby-graphic', 49.99), (1, 3, 'Greger graphics', 99.99);
-INSERT INTO Product (CategoryId, PopularityScore, [Name], Price) VALUES (2, 35, 'Intel 300 MHz', 599.99), (2, 40, 'AMD 100 MHz', 299.99), (2, 30, 'Intel 333 MHz', 699.99), (2, 4, 'Bobby-Central possessing unit', 29.99), (2, 2, 'Greger CPU', 199.99);
-INSERT INTO Product (CategoryId, PopularityScore, [Name], Price) VALUES (3, 100, 'Noname 128 MB', 49.99), (3, 200, 'Intel 512 MB', 199.99), (3, 150, 'MyMemory 1024 MB', 249.99), (3, 20, 'Boby-b-Good memory 384 MB', 249.99), (3, 10, 'Greger Memory 1024 MB', 149.99);
-INSERT INTO Storage (ProductId, Amount) VALUES (1, 10), (2, 20), (3, 50), (4, 60), (5, 70), (6, 100), (7, 100), (8, 100), (9, 100), (10, 100), (11, 100), (12, 100), (13, 100), (14, 100), (15, 100);
-INSERT INTO StorageTransaction (ProductId, Amount, ReasonId) VALUES (1, 10, 3), (2, 20, 3), (3, 50, 3), (4, 60, 3), (5, 70, 3), (6, 100, 3), (7, 100, 3), (8, 100, 3), (9, 100, 3), (10, 100, 3), (11, 100, 3), (12, 100, 3), (13, 100, 3), (14, 100, 3), (15, 100, 3);
+INSERT INTO Product (CategoryId, PopularityScore, [Name], Price) VALUES (1, 10, 'Voodoo 2', 399.99), (1, 20, 'GeForce', 449.99), (1, 15, 'Radeon', 349.99), (1, 5, 'Bobby-graphic', 49.99), (1, 3, 'Greger graphics', 99.99), (1, 1000, 'Best grapics card - AWESOME edition', 999.99), (1, 3, 'Probably best grapics - probable edition', 599.99);
+INSERT INTO Product (CategoryId, PopularityScore, [Name], Price) VALUES (2, 35, 'Intel 300 MHz', 599.99), (2, 40, 'AMD 100 MHz', 299.99), (2, 30, 'Intel 333 MHz', 699.99), (2, 4, 'Bobby-Central possessing unit', 29.99), (2, 2, 'Greger CPU', 199.99), (2, 900, 'Best CPU - BEAST EDITION', 999.99), (2, 20, 'Probably best CPU - medium rare edition', 699.99);
+INSERT INTO Product (CategoryId, PopularityScore, [Name], Price) VALUES (3, 100, 'Noname 128 MB', 49.99), (3, 200, 'Intel 512 MB', 199.99), (3, 150, 'MyMemory 1024 MB', 249.99), (3, 20, 'Bobby-b-Good memory 384 MB', 249.99), (3, 10, 'Greger Memory 1024 MB', 149.99), (3, 899, 'Best memory - UNLIMITED MB EDITION', 599.99), (3, 12, 'Probably best memeory - saurkraut edition', 299.99);
+INSERT INTO StorageTransaction (ProductId, Amount, ReasonId) VALUES
+	(1, 10, 3), (2, 20, 3), (3, 50, 3), (4, 60, 3), (5, 70, 3), (6, 100, 3), (7, 110, 3), (8, 120, 3), (9, 100, 3), (10, 50, 3), (11, 100, 3), (12, 30, 3), (13, 210, 3), (14, 90, 3), (15, 80, 3), (16, 50, 3), (17, 40, 3), (18, 30, 3), (19, 20, 3), (20, 60, 3), (21, 70, 3),	-- Stock adjustment.
+	(1, -2, 1), (1, -1, 1), (2, -3, 1), (3, -1, 1), (2, -1, 1), (4, -10, 1), (5, -10, 1), (6, -90, 1), (8, -2, 1), (9, -3, 1), (10, -2, 1), (11, -100, 1), (12, -12, 1), (13, -200, 1), (15, -2, 1), (16, -3, 1), (17, -1, 1), (18, -15, 1), (19, -4, 1), (20, -59, 1),		-- Delivery.
+	(4, 6, 2), (4, 2, 2), (4, 2, 2), (5, 5, 2), (11, 68, 2), (11, 16, 2), (11, 16, 2), (12, 6, 2), (18, 8, 2), (18, 5, 2), (18, 2, 2), (19, 2, 2);		-- Return.
+INSERT INTO Storage (ProductId, Amount) VALUES
+	(1, 7), (2, 16), (3, 49), (4, 50), (5, 65), (6, 10), (7, 110),				-- GPU.
+	(8, 118), (9, 97), (10, 48), (11, 0), (12, 24), (13, 10), (14, 90),			-- CPU.
+	(15, 78), (16, 47), (17, 39), (18, 15), (19, 18), (20, 1), (21, 70);		-- RAM.
 INSERT INTO Costumer ([Name], Mail, [Address]) VALUES ('Boris', 'boris@mail.com', 'Borisgatan 2B');
 INSERT INTO Costumer ([Name], Mail, [Address]) VALUES ('Greger', 'greger@mail.com', 'Gregervägen 3C');
 INSERT INTO Costumer ([Name], Mail, [Address]) VALUES ('Klabbe', 'klabbe@klabbmail.com', 'Bollvägen 12A');
@@ -191,8 +200,10 @@ CREATE OR ALTER PROCEDURE CreateNewCostumer
 @Address varchar(50)
 AS
 BEGIN
-	INSERT INTO Costumer ([Name], Mail, [Address]) VALUES (@UserName, @Email, @Address);
+	INSERT INTO Costumer ([Name], Mail, [Address])
+	VALUES (@UserName, @Email, @Address);
 END
+GO
 
 -- Tets:
 EXEC CreateNewCostumer @UserName = 'Turtle', @Email = 'turtle1@tmntmail.com', @Address = 'Kloak 4';
@@ -224,19 +235,24 @@ BEGIN
 	ELSE IF @DeleteAccount = 1
 		DELETE FROM Costumer WHERE Costumer.Id = @SelectedCostumerId
 END
+GO
+
+-- Test:
+EXEC UpdateCostumer @SelectedCostumerId = 2, @DeleteAccount = 1;
+EXEC UpdateCostumer @SelectedCostumerId = 2, @UpdatedName = 'Seeeeeger', @UpdatedEmail = 'segermail@mail.com', @UpdatedAddress = 'Nyavägen 666F';
+SELECT * FROM Costumer;
 
 -- TODO: ISNULL är fullösning? Problemet är att man gör en update även fast man bara kopierar samma värde som var innan.
 -- https://stackoverflow.com/questions/6677517/update-if-different-changed
 -- TODO: Borde man ta bort alla Orders som har med ett account att göra ifall man tar bort kontot?
-SELECT * FROM Costumer;
-EXEC UpdateCostumer @SelectedCostumerId = 2, @DeleteAccount = 1;
-EXEC UpdateCostumer @SelectedCostumerId = 2, @UpdatedName = 'Seeeeeger', @UpdatedEmail = 'segermail@mail.com', @UpdatedAddress = 'Nyavägen 666F';
+
+
 
 ----------------------------------------------------- ListProducts SP:
 CREATE OR ALTER PROCEDURE ListProducts
 @SelectedCategoryId int,
 @RowsToSkip int = 0,
-@RowsAmountToReturn int = 3
+@RowsAmountToReturn int = 5
 AS
 BEGIN
 	SELECT Product.Id AS ProductId, [Name] AS ProductName, Price
@@ -248,7 +264,7 @@ END
 GO
 
 -- Test:
-EXEC ListProducts @SelectedCategoryId = 1, @RowsToSkip = 0, @RowsAmountToReturn = 5;
+EXEC ListProducts @SelectedCategoryId = 3, @RowsToSkip = 0, @RowsAmountToReturn = 5;
 
 -- TODO: Hantera exeptions: @RowsToSkip < 0, @RowsAmount <= 0?
 -- SELECT * FROM Product;
@@ -268,7 +284,7 @@ CREATE OR ALTER PROCEDURE SearchProduct
 @SortColumn int = 0,				-- 0 = Popularity, 2 = Price, 3 = Name.
 @SortOrder bit = 0,					-- 0 = ASC, 1 = DESC.
 @RowsToSkip int = 0,				-- The number of rows (from the top of the serch result) to exclude.
-@RowsAmountToReturn int = 3					-- Number of rows after @RowsToSkip to include.
+@RowsAmountToReturn int = 5					-- Number of rows after @RowsToSkip to include.
 AS
 BEGIN
 	SELECT Product.Id AS ProductId, Product.[Name] AS ProductName, Product.Price
@@ -291,7 +307,7 @@ GO
 
 -- Test:
 EXEC SearchProduct @RowsToSkip = 0, @RowsAmountToReturn = 5;
-EXEC SearchProduct @CategoryId = 1;
+EXEC SearchProduct @CategoryId = 3;
 EXEC SearchProduct @SearchString = '', @CategoryId = 1;
 EXEC SearchProduct @SearchString = '', @IsAvailable = 1, @SortColumn = 2, @SortOrder = 3;
 EXEC SearchProduct @SearchString = '', @CategoryId = 2, @IsAvailable = 12, @SortColumn = 2, @SortOrder = 1, @RowsToSkip = 0, @RowsAmountToReturn = 3;
@@ -310,8 +326,11 @@ CREATE OR ALTER PROCEDURE UpdatePopularity
 AS
 BEGIN
 	IF @AddedScore IS NOT NULL AND @AddedScore >= 0 AND @ProductId IS NOT NULL
-		UPDATE Product SET Product.PopularityScore += (@AddedScore * @ProductAmountMultiplier) WHERE Product.Id = @ProductId;
+		UPDATE Product
+		SET Product.PopularityScore += (@AddedScore * @ProductAmountMultiplier)
+		WHERE Product.Id = @ProductId;
 END
+GO
 
 -- Test:
 EXEC UpdatePopularity @ProductId = 7, @AddedScore = 1, @ProductAmountMultiplier = 1;
@@ -333,9 +352,11 @@ BEGIN
 	WHERE Product.Id = @SelectedProductId;
 	EXEC UpdatePopularity @ProductId = @SelectedProductId, @AddedScore = 1;
 END
+GO
 
 -- TODO: Hur hanterar man "Reserved" (måste kolla [Order].ReturnAmount)?
 
+-- Test:
 EXEC ProductDetail @SelectedProductId = 5;
 SELECT * FROM Product;
 -- Produktdetaljer. Skriv in ett Product.Id.
@@ -374,6 +395,7 @@ BEGIN
 --	ELSE
 --		PRINT 'Error: One or more arguments is NULL.';
 END
+GO
 
 -- Test:
 EXEC AddToCart @CurrentUserId = 1, @ProductId = 6, @ProductAmount = 2;
@@ -498,7 +520,7 @@ AS
 BEGIN
 	IF @TransactionReason = 1 AND @SelectedOrderId IS NOT NULL
 	BEGIN
-		PRINT 'Delivery';
+		PRINT 'Delivery';				-- DEBUG.
 		INSERT INTO StorageTransaction (ProductId, Amount, ReasonId)
 			SELECT ProductId, (Amount * -1), 1
 			FROM [Order]
@@ -506,7 +528,7 @@ BEGIN
 	END
 	ELSE IF @TransactionReason = 2 AND @SelectedOrderId IS NOT NULL AND @ProductId IS NOT NULL AND @Amount > 0 
 	BEGIN
-		PRINT 'Return';
+		PRINT 'Return';					-- DEBUG.
 		INSERT INTO StorageTransaction (ProductId, Amount, ReasonId)
 			SELECT ProductId, @Amount, 2
 			FROM [Order]
@@ -532,11 +554,11 @@ BEGIN
 	END */
 	ELSE IF @TransactionReason = 3 AND @ProductId IS NOT NULL AND @Amount IS NOT NULL
 	BEGIN
-		PRINT 'Stock adjustment';
+		PRINT 'Stock adjustment';		-- DEBUG.
 		INSERT INTO StorageTransaction (ProductId, Amount, ReasonId)
 		VALUES (@ProductId, @Amount, 3);
 	END
-	ELSE
+	ELSE								-- DEBUG.
 	BEGIN
 		PRINT 'Not a valid option';
 	END
@@ -602,20 +624,21 @@ BEGIN
 			UPDATE Storage SET Storage.Amount -=
 			(
 				SELECT #temptable2.Amount
-				FROM #temptable2
-				WHERE #temptable2.Id = @LoopCounter
+					FROM #temptable2
+					WHERE #temptable2.Id = @LoopCounter
 			)
 			WHERE Storage.ProductId =
 			(
 				SELECT #temptable2.ProductId
-				FROM #temptable2
-				WHERE #temptable2.Id = @LoopCounter
+					FROM #temptable2
+					WHERE #temptable2.Id = @LoopCounter
 			)
 			SET @LoopCounter += 1;
 			PRINT CONCAT('LoopCounter (inside): ', @LoopCounter);					-- DEBUG.
 		END
 	END
 END
+GO
 
 -- Test:
 EXEC DeliverOrder @SelectedOrderId = 2;
@@ -670,7 +693,7 @@ AS
 BEGIN
 	IF (SELECT Delivered FROM [Order] WHERE [Order].OrderId = @SelectedOrderId AND [Order].ProductId = @SelectedProductId) = 1 AND @ReturnAmount <= (SELECT Amount FROM [Order] WHERE [Order].OrderId = @SelectedOrderId AND [Order].ProductId = @SelectedProductId) AND @ReturnAmount > 0
 	BEGIN
-		PRINT 'You are here';
+		PRINT 'You are here';		-- DEBUG.
 		UPDATE [Order]
 			SET Amount -= @ReturnAmount
 			WHERE [Order].OrderId = @SelectedOrderId AND [Order].ProductId = @SelectedProductId;
@@ -714,16 +737,20 @@ BEGIN
 --	SELECT Amount + @NewAmount FROM Storage WHERE Storage.ProductId = @ProductId;
 	IF @IsIncDec = 1 AND (SELECT Amount + @NewAmount FROM Storage WHERE Storage.ProductId = @ProductId) >= 0
 	BEGIN
-		PRINT 'Here';
-		UPDATE Storage SET Storage.Amount += @NewAmount WHERE Storage.ProductId = @ProductId
+		PRINT 'Here';			-- DEBUG.
+		UPDATE Storage
+			SET Storage.Amount += @NewAmount
+			WHERE Storage.ProductId = @ProductId;
 		EXEC NewTransaction @TransactionReason = 3, @ProductId = @ProductId, @Amount = @NewAmount;
 	END
 	ELSE IF @IsIncDec = 0 AND @NewAmount >= 0
 	BEGIN
-		PRINT 'IsIncDec 0';
+		PRINT 'IsIncDec 0';		-- DEBUG.
 		DECLARE @Diff int = (SELECT @NewAmount - Amount FROM Storage WHERE ProductId = @ProductId)
 		PRINT @Diff;
-		UPDATE Storage SET Storage.Amount = @NewAmount WHERE Storage.ProductId = @ProductId
+		UPDATE Storage
+			SET Storage.Amount = @NewAmount
+			WHERE Storage.ProductId = @ProductId;
 		EXEC NewTransaction @TransactionReason = 3, @ProductId = @ProductId, @Amount = @Diff;
 	END
 END
@@ -738,10 +765,12 @@ SELECT * FROM StorageTransaction;
 
 ----------------------------------------------------- PopularityReport SP
 CREATE OR ALTER PROCEDURE PopularityReport
-@CategoryId int = NULL
+@CategoryId int = NULL,
+@ShowTop int = 5
 AS
 BEGIN
 	SELECT
+		TOP (@ShowTop)
 		DENSE_RANK() OVER(PARTITION BY Product.CategoryId ORDER BY Product.PopularityScore DESC) AS [Rank],
 		Category.[Name] AS Category,
 		Product.[Name] AS ProductName,
@@ -752,7 +781,7 @@ BEGIN
 END
 GO
 
-EXEC PopularityReport @CategoryId = 2;
+EXEC PopularityReport @ShowTop = 5, @CategoryId = 2;
 SELECT * FROM Product;
 
 -- TODO: Fungerar men DENSE_RANK()
@@ -760,10 +789,12 @@ SELECT * FROM Product;
 ----------------------------------------------------- ReturnReport
 CREATE OR ALTER PROCEDURE ReturnReport
 @CategoryId int = NULL,
-@OrderBy bit = 0				-- 0 = Order by amount of returns. 1 = Order by the total cost of returns.
+@OrderBy bit = 0,				-- 0 = Order by amount of returns. 1 = Order by the total cost of returns.
+@ShowTop int = 5
 AS
 BEGIN
 	SELECT
+		TOP (@ShowTop)
 		Product.Id,
 		Product.[Name],
 		SUM(StorageTransaction.Amount) AS AmountOfReturns,
@@ -774,14 +805,14 @@ BEGIN
 		GROUP BY Product.Id, Product.[Name]
 		ORDER BY
 			CASE WHEN @OrderBy = 0 THEN SUM(StorageTransaction.Amount) END DESC,
-			CASE WHEN @OrderBy = 1 THEN SUM(StorageTransaction.Amount * Product.Price) END DESC
+			CASE WHEN @OrderBy = 1 THEN SUM(StorageTransaction.Amount * Product.Price) END DESC;
 --	ELSE
 	--CASE WHEN @SortOrder = 1 AND @SortColumn = 0 THEN Product.PopularityScore END DESC,
 END
 GO
 
 -- Test:
-EXEC ReturnReport @CategoryId = 1, @OrderBy = 1;
+EXEC ReturnReport @CategoryId = 3, @OrderBy = 1;
 SELECT * FROM Product;
 SELECT * FROM StorageTransaction;
 
@@ -794,7 +825,47 @@ SELECT *
 -- TODO: TOP 5 mest returnerade för vald kategori.
 -- Använd "window functions (ascoolt!, men utanför kursen), table functions, loopa i en SP och fylla på en tabellvariabel m.m." för att visa TOP 5 i för varje kategori i 
 ----------------------------------------------------- CategoryReport
+CREATE OR ALTER PROCEDURE CategoryReport
+@StartDate datetime2 = NULL,		-- YYYY-MM-DD hh:mm:ss[.nnnnnnn]. If NULL it sets yesterday.
+@EndDate datetime2 = NULL			-- YYYY-MM-DD hh:mm:ss[.nnnnnnn]. If NULL it sets current datetime2.
+AS
+BEGIN
+	IF @StartDate IS NULL
+		SET @StartDate = DATEADD(dd, -1, SYSDATETIME());
+	IF @EndDate IS NULL
+		SET @EndDate = SYSDATETIME();
+	PRINT @StartDate;			-- DEBUG.
+	PRINT @EndDate;				-- DEBUG.
 
+	IF DATEDIFF(second, @StartDate, @EndDate) !< 0
+	BEGIN
+		SELECT
+			C.[Name] AS CategoryName,
+			SUM(CASE WHEN S.ReasonId = 1 THEN S.Amount * -1 END) AS SoldAmount,
+			SUM(CASE WHEN S.ReasonId = 2 THEN S.Amount END) AS ReturnedAmount
+			FROM StorageTransaction S
+			INNER JOIN Product P ON S.ProductId = P.Id
+			INNER JOIN Category C ON P.CategoryId = C.Id
+			WHERE S.[Time] BETWEEN @StartDate AND @EndDate
+			GROUP BY C.[Name];
+	END
+END
+GO
+
+-- Test:
+EXEC CategoryReport @StartDate = '2021-01-06 17:30:01.000000', @EndDate = '2021-01-06 17:32:48.000000';
+
+INSERT INTO StorageTransaction (ProductId, Amount, ReasonId) VALUES (3, -4, 1);
+INSERT INTO StorageTransaction (ProductId, Amount, ReasonId) VALUES (2, -3, 1);
+INSERT INTO StorageTransaction (ProductId, Amount, ReasonId) VALUES (5, -2, 1);
+INSERT INTO StorageTransaction (ProductId, Amount, ReasonId) VALUES (6, -1, 1);
+INSERT INTO StorageTransaction (ProductId, Amount, ReasonId) VALUES (7, 4, 2);
+INSERT INTO StorageTransaction (ProductId, Amount, ReasonId) VALUES (8, 3, 2);
+INSERT INTO StorageTransaction (ProductId, Amount, ReasonId) VALUES (9, 2, 2);
+INSERT INTO StorageTransaction (ProductId, Amount, ReasonId) VALUES (10, 1, 2);
+SELECT * FROM StorageTransaction;
+
+-- TODO: DATEDIFF(second) är antagligen för finlirigt om man vill jämföra datum månader eller kanske år ifrån varandra.
 ----------------------------------------------------- Trigger för Transaction.
 
 /* CREATE OR ALTER TRIGGER TR_StorageTransaction ON Storage
