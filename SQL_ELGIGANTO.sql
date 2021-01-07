@@ -1,5 +1,6 @@
-USE Student11;
-
+--USE ElGiganto11;
+--USE Student11;
+----------------------------------------------------- Drop FK:s, drop tables, sequence and all stored procedures:
 ALTER TABLE [Order] DROP CONSTRAINT FK_Order_Costumer;
 ALTER TABLE [Order] DROP CONSTRAINT FK_Order_Product;
 ALTER TABLE Storage DROP CONSTRAINT FK_Storage_Product;
@@ -16,24 +17,52 @@ DROP TABLE Product;
 
 DROP SEQUENCE OrderSequence;
 
-DROP PROC ListProducts;
-DROP PROC UpdatePopularity;
-DROP PROC ProductDetail;
-DROP PROC SearchProduct;
-DROP PROC DeliverOrder;
-DROP PROC StorageAdjustment;
-DROP PROC NewTransaction;
-DROP PROC AddToCart;
-DROP PROC NewUser;
-DROP PROC ListCartContent;
-DROP PROC CheckoutCart;
 DROP PROC CreateNewCostumer;
 DROP PROC UpdateCostumer;
+DROP PROC ListProducts;
+DROP PROC SearchProduct;
+DROP PROC UpdatePopularity;
+DROP PROC ProductDetail;
+DROP PROC AddToCart;
+DROP PROC ListCartContent;
+DROP PROC CheckoutCart;
+DROP PROC NewTransaction;
+DROP PROC DeliverOrder;
+DROP PROC ViewOrder;
+DROP PROC UpdateOrder;
+DROP PROC StorageAdjustment;
 DROP PROC PopularityReport;
 DROP PROC ReturnReport;
 DROP PROC CategoryReport;
 
------------------------------------------------------ Tables:
+----------------------------------------------------- SELECT for all tables:
+SELECT * FROM Category;
+SELECT * FROM Product;
+SELECT * FROM Costumer;
+SELECT * FROM Cart;
+SELECT * FROM [Order];
+SELECT * FROM Storage;
+SELECT * FROM StorageTransaction;
+SELECT * FROM TransactionReason;
+
+----------------------------------------------------- Exec for all stored procedures:
+EXEC CreateNewCostumer @UserName = 'Turtle', @Email = 'turtle1@tmntmail.com', @Address = 'Kloak 4';
+EXEC UpdateCostumer @SelectedCostumerId = 2, @UpdatedName = 'Ninja', @UpdatedEmail = 'ninjaman@mail.com', @UpdatedAddress = 'Skuggatan 33F', @DeleteAccount = 0;
+EXEC ListProducts @SelectedCategoryId = 2, @RowsToSkip = 0, @RowsAmountToReturn = 5;
+EXEC SearchProduct @SearchString = 'best', @CategoryId = 2, @IsAvailable = 1, @SortColumn = 1, @SortOrder = 1, @RowsToSkip = 0, @RowsAmountToReturn = 5;
+EXEC ProductDetail @SelectedProductId = 11;
+EXEC AddToCart @CurrentUserId = 1, @ProductId = 4, @ProductAmount = 5;
+EXEC ListCartContent @CurrentUserId = 1;
+EXEC CheckoutCart @CurrentUserId = 1;
+EXEC DeliverOrder @SelectedOrderId = 1;
+EXEC ViewOrder @SelectedOrderId = 1;
+EXEC UpdateOrder @SelectedOrderId = 1, @SelectedProductId = 4, @ReturnAmount = 1;
+EXEC StorageAdjustment @ProductId = 2, @NewAmount = -2, @IsIncDec = 1;
+EXEC PopularityReport @CategoryId = 2, @ShowTop = 5;
+EXEC ReturnReport @CategoryId = 3, @OrderBy = 1, @ShowTop = 5;
+EXEC CategoryReport @StartDate = '2021-01-01 12:00:00.000000', @EndDate = '2021-01-02 12:00:00.000000';
+
+----------------------------------------------------- Create Tables:
 CREATE TABLE Category
 (
 	Id int PRIMARY KEY IDENTITY(1,1),
@@ -151,7 +180,7 @@ INSERT INTO Popularity (ProductId) VALUES (12);			-- Test for constraint */
 -- Alternativ implementation2: Ta bort Reserved-tabellen. Så länge som Order.Delivered inte är true så är en vara också reserved.
 -- Nackdelar med att ta bort Reserved-tabellen: Kan potentiellt vara en prestanda-förlust? Kanske går att lösa med index i rätt kolumner. Om man ska kolla saldon måste man också kolla igenom alla ordrar (levererade och icke-levererade) istället för att bara kolla reserved-tabellen. Kanske går att lösa med ett index?
 
------------------------------------------------------ Foreign Key constraints:
+----------------------------------------------------- Add foreign key constraints:
 ALTER TABLE Product ADD CONSTRAINT FK_Product_Category FOREIGN KEY (CategoryId) REFERENCES Category(Id);
 ALTER TABLE [Order] ADD CONSTRAINT FK_Order_Product FOREIGN KEY (ProductId) REFERENCES Product(Id);
 ALTER TABLE [Order] ADD CONSTRAINT FK_Order_Costumer FOREIGN KEY (CostumerId) REFERENCES Costumer(Id);
@@ -175,7 +204,7 @@ ALTER TABLE StorageTransaction ADD CONSTRAINT FK_StorageTransaction_Reason FOREI
 -- Trigger ifall man editar Storage eller StorageTransaction som gör att man påverkar båda?
 -- Trigger mellan Cart och Order?
 
--- Test data:
+----------------------------------------------------- Insert Test data:
 INSERT INTO Category ([Name]) VALUES ('GPU'), ('CPU'), ('RAM');
 INSERT INTO TransactionReason (Reason) VALUES ('Delivery'), ('Return'), ('Stock adjustment');
 INSERT INTO Product (CategoryId, PopularityScore, [Name], Price) VALUES (1, 10, 'Voodoo 2', 399.99), (1, 20, 'GeForce', 449.99), (1, 15, 'Radeon', 349.99), (1, 5, 'Bobby-graphic', 49.99), (1, 3, 'Greger graphics', 99.99), (1, 1000, 'Best grapics card - AWESOME edition', 999.99), (1, 3, 'Probably best grapics - probable edition', 599.99);
@@ -206,10 +235,10 @@ END
 GO
 
 -- Tets:
-EXEC CreateNewCostumer @UserName = 'Turtle', @Email = 'turtle1@tmntmail.com', @Address = 'Kloak 4';
+--EXEC CreateNewCostumer @UserName = 'Turtle', @Email = 'turtle1@tmntmail.com', @Address = 'Kloak 4';
 --EXEC CreateNewCostumer @UserName = 'Greger', @Email = 'greger@mail.com', @Address = 'Gregervägen 3C';
 --EXEC CreateNewCostumer @UserName = 'Klabbe', @Email = 'Klabbe@klabbmail.com', @Address = 'Bollvägen 12A';
-SELECT * FROM Costumer;
+--SELECT * FROM Costumer;
 
 -- TODO: Returnera det senaste skapta Id:t, kan vara sjysst ifall man ska logga in direkt efter?
 -- TODO: Mail confirmed.
@@ -221,7 +250,7 @@ CREATE OR ALTER PROCEDURE UpdateCostumer
 @UpdatedName varchar(50) = NULL,
 @UpdatedEmail varchar(50) = NULL,
 @UpdatedAddress varchar(50) = NULL,
-@DeleteAccount bit = 0
+@DeleteAccount bit = 0					-- 0 = UPDATE the costumer data. 1 = deletes the costumer.
 AS
 BEGIN
 	IF @DeleteAccount = 0
@@ -232,15 +261,16 @@ BEGIN
 			Costumer.[Address] = ISNULL(@UpdatedAddress, (SELECT [Address] FROM Costumer WHERE Costumer.Id = @SelectedCostumerId))
 		WHERE Costumer.Id = @SelectedCostumerId
 	END
-	ELSE IF @DeleteAccount = 1
+	ELSE IF @DeleteAccount = 1 AND @SelectedCostumerId IS NOT NULL
 		DELETE FROM Costumer WHERE Costumer.Id = @SelectedCostumerId
 END
 GO
 
 -- Test:
-EXEC UpdateCostumer @SelectedCostumerId = 2, @DeleteAccount = 1;
-EXEC UpdateCostumer @SelectedCostumerId = 2, @UpdatedName = 'Seeeeeger', @UpdatedEmail = 'segermail@mail.com', @UpdatedAddress = 'Nyavägen 666F';
-SELECT * FROM Costumer;
+--EXEC UpdateCostumer @SelectedCostumerId = 2, @DeleteAccount = 1;
+--EXEC UpdateCostumer @SelectedCostumerId = 2, @UpdatedName = 'Ninja', @UpdatedEmail = 'ninjaman@mail.com', @UpdatedAddress = 'Skuggatan 33F', @DeleteAccount = 0;
+--EXEC UpdateCostumer @SelectedCostumerId = 2, @UpdatedName = 'Ninja', @UpdatedEmail = 'ninjaman@mail.com', @UpdatedAddress = 'Skuggatan 33F', @DeleteAccount = 1;
+--SELECT * FROM Costumer;
 
 -- TODO: ISNULL är fullösning? Problemet är att man gör en update även fast man bara kopierar samma värde som var innan.
 -- https://stackoverflow.com/questions/6677517/update-if-different-changed
@@ -251,8 +281,8 @@ SELECT * FROM Costumer;
 ----------------------------------------------------- ListProducts SP:
 CREATE OR ALTER PROCEDURE ListProducts
 @SelectedCategoryId int,
-@RowsToSkip int = 0,
-@RowsAmountToReturn int = 5
+@RowsToSkip int = 0,						-- Pagination. Will skip the first # rows. Default 0.
+@RowsAmountToReturn int = 5					-- Pagination. Will return the # of rows. Default 5.
 AS
 BEGIN
 	SELECT Product.Id AS ProductId, [Name] AS ProductName, Price
@@ -264,7 +294,7 @@ END
 GO
 
 -- Test:
-EXEC ListProducts @SelectedCategoryId = 3, @RowsToSkip = 0, @RowsAmountToReturn = 5;
+--EXEC ListProducts @SelectedCategoryId = 2, @RowsToSkip = 0, @RowsAmountToReturn = 5;
 
 -- TODO: Hantera exeptions: @RowsToSkip < 0, @RowsAmount <= 0?
 -- SELECT * FROM Product;
@@ -283,8 +313,8 @@ CREATE OR ALTER PROCEDURE SearchProduct
 @IsAvailable bit = 0,				-- 0 = Shows Product even if there are none in Stock. 1 = The Product need to be at Stock.Amount > 0.
 @SortColumn int = 0,				-- 0 = Popularity, 2 = Price, 3 = Name.
 @SortOrder bit = 0,					-- 0 = ASC, 1 = DESC.
-@RowsToSkip int = 0,				-- The number of rows (from the top of the serch result) to exclude.
-@RowsAmountToReturn int = 5					-- Number of rows after @RowsToSkip to include.
+@RowsToSkip int = 0,				-- Pagination. Will skip the first # rows. Default 0.
+@RowsAmountToReturn int = 5					-- Pagination. Will return the # of rows. Default 5.
 AS
 BEGIN
 	SELECT Product.Id AS ProductId, Product.[Name] AS ProductName, Product.Price
@@ -306,13 +336,13 @@ END
 GO
 
 -- Test:
-EXEC SearchProduct @RowsToSkip = 0, @RowsAmountToReturn = 5;
-EXEC SearchProduct @CategoryId = 3;
-EXEC SearchProduct @SearchString = '', @CategoryId = 1;
-EXEC SearchProduct @SearchString = '', @IsAvailable = 1, @SortColumn = 2, @SortOrder = 3;
-EXEC SearchProduct @SearchString = '', @CategoryId = 2, @IsAvailable = 12, @SortColumn = 2, @SortOrder = 1, @RowsToSkip = 0, @RowsAmountToReturn = 3;
-EXEC SearchProduct @SearchString = '', @IsAvailable = 1, @SortColumn = 0, @SortOrder = 1;
-SELECT * FROM Product;
+--EXEC SearchProduct @RowsToSkip = 0, @RowsAmountToReturn = 5;
+--EXEC SearchProduct @CategoryId = 3;
+--EXEC SearchProduct @SearchString = '', @CategoryId = 1;
+--EXEC SearchProduct @SearchString = '', @IsAvailable = 1, @SortColumn = 2, @SortOrder = 3;
+--EXEC SearchProduct @SearchString = 'best', @CategoryId = 2, @IsAvailable = 1, @SortColumn = 1, @SortOrder = 1, @RowsToSkip = 0, @RowsAmountToReturn = 5;
+--EXEC SearchProduct @SearchString = '', @IsAvailable = 1, @SortColumn = 0, @SortOrder = 1;
+--SELECT * FROM Product;
 
 -- Sökfunktion: Sök på något och få tillbaka de Products som matchar.
 	-- Bonus: Lägg till popularitet till något ifall man söker på det. Behöver göra en UPDATE på alla Product som matchar sökningen.
@@ -333,8 +363,8 @@ END
 GO
 
 -- Test:
-EXEC UpdatePopularity @ProductId = 7, @AddedScore = 1, @ProductAmountMultiplier = 1;
-SELECT * FROM Product;
+--EXEC UpdatePopularity @ProductId = 7, @AddedScore = 1, @ProductAmountMultiplier = 1;
+--SELECT * FROM Product;
 
 -- TODO: Sätt in fördefinerade värden för AddedScore (1, 5, 10).
 -- TODO: Det hela är rätt så flawed. Man kan bara spamma vissa saker (som SP:n ProductDetail) för att scoren ska öka. Borde vara någon cooldown.
@@ -357,14 +387,14 @@ GO
 -- TODO: Hur hanterar man "Reserved" (måste kolla [Order].ReturnAmount)?
 
 -- Test:
-EXEC ProductDetail @SelectedProductId = 5;
-SELECT * FROM Product;
+--EXEC ProductDetail @SelectedProductId = 11;
+--SELECT * FROM Product;
 -- Produktdetaljer. Skriv in ett Product.Id.
 	-- Ska visa Name, Category, Price och lagerstatus.
 
 ----------------------------------------------------- AddToCart SP:
 CREATE OR ALTER PROCEDURE AddToCart
-@CurrentUserId int,					-- When no "=" is used an argument with a value is required (the argument can still be set to NULL whel calling the SP).
+@CurrentUserId int,
 @ProductId int,
 @ProductAmount int
 AS
@@ -398,9 +428,9 @@ END
 GO
 
 -- Test:
-EXEC AddToCart @CurrentUserId = 1, @ProductId = 6, @ProductAmount = 2;
-SELECT * FROM Cart;
-SELECT * FROM Product;
+EXEC AddToCart @CurrentUserId = 1, @ProductId = 4, @ProductAmount = 5;
+--SELECT * FROM Cart;
+--SELECT * FROM Product;
 -- TODO: Rename CurrentUserId to CurrentCostumerId.
 -- TODO: Add a feature to remove the card instantly (withouh having to reach 0).
 -- TODO: Borde kolla ifall Storage.Amount > 0.
@@ -488,19 +518,19 @@ END
 GO
 
 -- Test:
-EXEC CheckoutCart @CurrentUserId = 3;
+--EXEC CheckoutCart @CurrentUserId = 1;
 
-SELECT * FROM Cart;
-SELECT * FROM [Order];
-SELECT * FROM Product;
-SELECT * FROM sys.sequences WHERE [name] = 'OrderSequence';
-SELECT current_value FROM sys.sequences WHERE [name] = 'OrderSequence';
-SELECT NEXT VALUE FOR OrderSequence;
-EXEC AddToCart @CurrentUserId = 1, @ProductId = 1, @ProductAmount = 2;
-EXEC AddToCart @CurrentUserId = 2, @ProductId = 3, @ProductAmount = 2;
-EXEC AddToCart @CurrentUserId = 1, @ProductId = 2, @ProductAmount = 2;
-EXEC AddToCart @CurrentUserId = 2, @ProductId = 4, @ProductAmount = 2;
-EXEC AddToCart @CurrentUserId = 3, @ProductId = 4, @ProductAmount = 5;
+--SELECT * FROM Cart;
+--SELECT * FROM [Order];
+--SELECT * FROM Product;
+--SELECT * FROM sys.sequences WHERE [name] = 'OrderSequence';
+--SELECT current_value FROM sys.sequences WHERE [name] = 'OrderSequence';
+--SELECT NEXT VALUE FOR OrderSequence;
+--EXEC AddToCart @CurrentUserId = 1, @ProductId = 1, @ProductAmount = 2;
+--EXEC AddToCart @CurrentUserId = 2, @ProductId = 3, @ProductAmount = 2;
+--EXEC AddToCart @CurrentUserId = 1, @ProductId = 2, @ProductAmount = 2;
+--EXEC AddToCart @CurrentUserId = 2, @ProductId = 4, @ProductAmount = 2;
+--EXEC AddToCart @CurrentUserId = 3, @ProductId = 4, @ProductAmount = 5;
 
 -- TODO: Borde kolla ifall Storage.Amount > 0. Kan hämta att värdet ändrats under tiden som man gör saker. Kanske går att lägga en order men man borde iaf få en varning?
 -- TODO: Random-algoritmen är rätt dålig. Borde baseras på datum eller något för att minimera risken att duplicates uppstår. Datum, CostumerId + Random (4 siffror).
@@ -520,7 +550,7 @@ AS
 BEGIN
 	IF @TransactionReason = 1 AND @SelectedOrderId IS NOT NULL
 	BEGIN
-		PRINT 'Delivery';				-- DEBUG.
+--		PRINT 'Delivery';				-- DEBUG.
 		INSERT INTO StorageTransaction (ProductId, Amount, ReasonId)
 			SELECT ProductId, (Amount * -1), 1
 			FROM [Order]
@@ -528,7 +558,7 @@ BEGIN
 	END
 	ELSE IF @TransactionReason = 2 AND @SelectedOrderId IS NOT NULL AND @ProductId IS NOT NULL AND @Amount > 0 
 	BEGIN
-		PRINT 'Return';					-- DEBUG.
+--		PRINT 'Return';					-- DEBUG.
 		INSERT INTO StorageTransaction (ProductId, Amount, ReasonId)
 			SELECT ProductId, @Amount, 2
 			FROM [Order]
@@ -554,14 +584,14 @@ BEGIN
 	END */
 	ELSE IF @TransactionReason = 3 AND @ProductId IS NOT NULL AND @Amount IS NOT NULL
 	BEGIN
-		PRINT 'Stock adjustment';		-- DEBUG.
+--		PRINT 'Stock adjustment';		-- DEBUG.
 		INSERT INTO StorageTransaction (ProductId, Amount, ReasonId)
 		VALUES (@ProductId, @Amount, 3);
 	END
-	ELSE								-- DEBUG.
-	BEGIN
-		PRINT 'Not a valid option';
-	END
+--	ELSE								-- DEBUG.
+--	BEGIN
+--		PRINT 'Not a valid option';
+--	END
 END
 GO
 
@@ -569,11 +599,11 @@ GO
 
 -- Test:
 --EXEC NewTransaction @SelectedOrdernumber = 16654526;
-EXEC NewTransaction @TransactionReason = 1, @ProductId = 2, @Amount = 10;
+--EXEC NewTransaction @TransactionReason = 1, @ProductId = 2, @Amount = 10;
 --UPDATE [Order] SET [Order].ReturnAmount = 2 WHERE Id = 2;
-SELECT * FROM [Order];
-SELECT * FROM StorageTransaction;
-SELECT * FROM TransactionReason;
+--SELECT * FROM [Order];
+--SELECT * FROM StorageTransaction;
+--SELECT * FROM TransactionReason;
 -- Måste köras innan själva förändringen i lagersaldo skett.
 -- Kollar ifall [Order].Delivered är true så handlar det om StorageTransaction med Reason "Delivery". Använder Product och Amount ifrån [Order].
 -- Ifall [Order].Delivered är false så handlar det om en "Return". Använd Product och Amount från [Order].
@@ -591,7 +621,7 @@ SELECT * FROM TransactionReason;
 	-- Om Storage.Amount == 
 --END
 
------------------------------------------------------ Deliver order SP:
+----------------------------------------------------- DeliverOrder SP:
 CREATE OR ALTER PROCEDURE DeliverOrder
 --@SelectedOrdernumber int,		-- TODO: Bonus.
 @SelectedOrderId int
@@ -600,14 +630,14 @@ BEGIN
 --	SELECT * FROM [Order];
 	IF 0 IN (SELECT [Order].Delivered FROM [Order] WHERE [Order].OrderId = @SelectedOrderId)
 	BEGIN
-		PRINT 'Delivered is 0';			-- DEBUG.
+--		PRINT 'Delivered is 0';			-- DEBUG.
 		UPDATE [Order] SET [Order].Delivered = 1
 			WHERE [Order].OrderId = @SelectedOrderId;
 
 		EXEC NewTransaction @TransactionReason = 1, @SelectedOrderId = @SelectedOrderId;
 
 		DECLARE @LoopCounter int = 1;
-		PRINT CONCAT ('LoopCounter: ', @LoopCounter);					-- DEBUG.
+--		PRINT CONCAT ('LoopCounter: ', @LoopCounter);					-- DEBUG.
 		
 		CREATE TABLE #temptable2
 			(Id int PRIMARY KEY IDENTITY(1,1), ProductId int NOT NULL, Amount int NOT NULL);
@@ -617,7 +647,7 @@ BEGIN
 			FROM [Order]
 			WHERE [Order].OrderId = @SelectedOrderId;
 
-		SELECT * FROM #temptable2;			-- DEBUG.
+--		SELECT * FROM #temptable2;			-- DEBUG.
 
 		WHILE @LoopCounter <= (SELECT COUNT(Id) FROM #temptable2)
 		BEGIN
@@ -634,29 +664,29 @@ BEGIN
 					WHERE #temptable2.Id = @LoopCounter
 			)
 			SET @LoopCounter += 1;
-			PRINT CONCAT('LoopCounter (inside): ', @LoopCounter);					-- DEBUG.
+--			PRINT CONCAT('LoopCounter (inside): ', @LoopCounter);					-- DEBUG.
 		END
 	END
 END
 GO
 
 -- Test:
-EXEC DeliverOrder @SelectedOrderId = 2;
+--EXEC DeliverOrder @SelectedOrderId = 1;
 --EXEC DeliverOrder @SelectedOrdernumber = 45410858;
-SELECT * FROM [Order];
-SELECT * FROM Storage;
-SELECT * FROM StorageTransaction;
+--SELECT * FROM [Order];
+--SELECT * FROM Storage;
+--SELECT * FROM StorageTransaction;
 
-SELECT * FROM Cart;
-SELECT * FROM TransactionReason;
-UPDATE [Order] SET [Order].Delivered = 0;
-DELETE FROM [Order] WHERE Id = 3;
-UPDATE [Order] SET [Order].Amount = 10 WHERE Id = 1;
+--SELECT * FROM Cart;
+--SELECT * FROM TransactionReason;
+--UPDATE [Order] SET [Order].Delivered = 0;
+--DELETE FROM [Order] WHERE Id = 3;
+--UPDATE [Order] SET [Order].Amount = 10 WHERE Id = 1;
 
 -- TODO: Testa vad som är effektivast i IF-satsen, IN, TOP 1 och =?
 -- TODO: Måste lägga till "NewTransaction" någonstans.
 
------------------------------------------------------ Bonus: ViewOrder SP:
+----------------------------------------------------- ViewOrder SP:
 CREATE OR ALTER PROCEDURE ViewOrder
 @SelectedOrderId int
 AS
@@ -677,8 +707,8 @@ BEGIN
 END
 GO
 
-EXEC ViewOrder @SelectedOrderId = 2;
-SELECT * FROM [Order];
+--EXEC ViewOrder @SelectedOrderId = 1;
+--SELECT * FROM [Order];
 -- Bonus: Ordernumber
 -- Visar för användaren statusen på ordern (delivered eller ej).
 -- Används också fö att skriva ut saker som är relevanta för UpdateOrder.
@@ -693,7 +723,7 @@ AS
 BEGIN
 	IF (SELECT Delivered FROM [Order] WHERE [Order].OrderId = @SelectedOrderId AND [Order].ProductId = @SelectedProductId) = 1 AND @ReturnAmount <= (SELECT Amount FROM [Order] WHERE [Order].OrderId = @SelectedOrderId AND [Order].ProductId = @SelectedProductId) AND @ReturnAmount > 0
 	BEGIN
-		PRINT 'You are here';		-- DEBUG.
+--		PRINT 'You are here';		-- DEBUG.
 		UPDATE [Order]
 			SET Amount -= @ReturnAmount
 			WHERE [Order].OrderId = @SelectedOrderId AND [Order].ProductId = @SelectedProductId;
@@ -707,12 +737,12 @@ END
 GO
 
 -- Test:
-EXEC UpdateOrder @SelectedOrderId = 2, @SelectedProductId = 2, @ReturnAmount = 1;
-EXEC ViewOrder @SelectedOrderId = 2;
+--EXEC UpdateOrder @SelectedOrderId = 1, @SelectedProductId = 4, @ReturnAmount = 1;
+--EXEC ViewOrder @SelectedOrderId = 1;
 
-SELECT * FROM [Order];
-SELECT * FROM Storage;
-SELECT * FROM StorageTransaction;
+--SELECT * FROM [Order];
+--SELECT * FROM Storage;
+--SELECT * FROM StorageTransaction;
 
 -- Borde göra något mer så att de som arbeter har koll på vad som hänt?
 -- Man borde också kunna använda Ordernumber?
@@ -737,7 +767,7 @@ BEGIN
 --	SELECT Amount + @NewAmount FROM Storage WHERE Storage.ProductId = @ProductId;
 	IF @IsIncDec = 1 AND (SELECT Amount + @NewAmount FROM Storage WHERE Storage.ProductId = @ProductId) >= 0
 	BEGIN
-		PRINT 'Here';			-- DEBUG.
+--		PRINT 'Here';			-- DEBUG.
 		UPDATE Storage
 			SET Storage.Amount += @NewAmount
 			WHERE Storage.ProductId = @ProductId;
@@ -745,7 +775,7 @@ BEGIN
 	END
 	ELSE IF @IsIncDec = 0 AND @NewAmount >= 0
 	BEGIN
-		PRINT 'IsIncDec 0';		-- DEBUG.
+--		PRINT 'IsIncDec 0';		-- DEBUG.
 		DECLARE @Diff int = (SELECT @NewAmount - Amount FROM Storage WHERE ProductId = @ProductId)
 		PRINT @Diff;
 		UPDATE Storage
@@ -757,15 +787,15 @@ END
 GO
 
 -- Test:
-EXEC StorageAdjustment @ProductId = 2, @NewAmount = -2, @IsIncDec = 1;
-SELECT * FROM Storage;
-SELECT * FROM StorageTransaction;
+--EXEC StorageAdjustment @ProductId = 2, @NewAmount = -2, @IsIncDec = 1;
+--SELECT * FROM Storage;
+--SELECT * FROM StorageTransaction;
 
 -- TODO: Borde skriva vilken användare som gjorde förändringen.
 
------------------------------------------------------ PopularityReport SP
+----------------------------------------------------- PopularityReport SP:
 CREATE OR ALTER PROCEDURE PopularityReport
-@CategoryId int = NULL,
+@CategoryId int = NULL,			-- NULL = includes all categories. The result may be cropped by @ShowTop depending on how many products there are.
 @ShowTop int = 5
 AS
 BEGIN
@@ -781,14 +811,14 @@ BEGIN
 END
 GO
 
-EXEC PopularityReport @ShowTop = 5, @CategoryId = 2;
-SELECT * FROM Product;
+--EXEC PopularityReport @CategoryId = 2, @ShowTop = 5;
+--SELECT * FROM Product;
 
 -- TODO: Fungerar men DENSE_RANK()
 
------------------------------------------------------ ReturnReport
+----------------------------------------------------- ReturnReport SP:
 CREATE OR ALTER PROCEDURE ReturnReport
-@CategoryId int = NULL,
+@CategoryId int = NULL,			-- NULL = All categories.
 @OrderBy bit = 0,				-- 0 = Order by amount of returns. 1 = Order by the total cost of returns.
 @ShowTop int = 5
 AS
@@ -812,21 +842,21 @@ END
 GO
 
 -- Test:
-EXEC ReturnReport @CategoryId = 3, @OrderBy = 1;
-SELECT * FROM Product;
-SELECT * FROM StorageTransaction;
+--EXEC ReturnReport @CategoryId = 3, @OrderBy = 1, @ShowTop = 5;
+--SELECT * FROM Product;
+--SELECT * FROM StorageTransaction;
 
-SELECT *
-	FROM StorageTransaction
-	INNER JOIN Product ON Product.Id = StorageTransaction.ProductId
-	WHERE Product.CategoryId = 1 AND StorageTransaction.ReasonId = 2
+--SELECT *
+--	FROM StorageTransaction
+--	INNER JOIN Product ON Product.Id = StorageTransaction.ProductId
+--	WHERE Product.CategoryId = 1 AND StorageTransaction.ReasonId = 2
 	--GROUP BY Product.Id, Product.[Name], StorageTransaction.Amount
 -- TODO: TotalCost är en rätt så ful kolumn.
 -- TODO: TOP 5 mest returnerade för vald kategori.
 -- Använd "window functions (ascoolt!, men utanför kursen), table functions, loopa i en SP och fylla på en tabellvariabel m.m." för att visa TOP 5 i för varje kategori i 
------------------------------------------------------ CategoryReport
+----------------------------------------------------- CategoryReport SP:
 CREATE OR ALTER PROCEDURE CategoryReport
-@StartDate datetime2 = NULL,		-- YYYY-MM-DD hh:mm:ss[.nnnnnnn]. If NULL it sets yesterday.
+@StartDate datetime2 = NULL,		-- YYYY-MM-DD hh:mm:ss[.nnnnnnn]. If NULL it's set to -24h.
 @EndDate datetime2 = NULL			-- YYYY-MM-DD hh:mm:ss[.nnnnnnn]. If NULL it sets current datetime2.
 AS
 BEGIN
@@ -834,8 +864,8 @@ BEGIN
 		SET @StartDate = DATEADD(dd, -1, SYSDATETIME());
 	IF @EndDate IS NULL
 		SET @EndDate = SYSDATETIME();
-	PRINT @StartDate;			-- DEBUG.
-	PRINT @EndDate;				-- DEBUG.
+--	PRINT @StartDate;			-- DEBUG.
+--	PRINT @EndDate;				-- DEBUG.
 
 	IF DATEDIFF(second, @StartDate, @EndDate) !< 0
 	BEGIN
@@ -853,17 +883,17 @@ END
 GO
 
 -- Test:
-EXEC CategoryReport @StartDate = '2021-01-06 17:30:01.000000', @EndDate = '2021-01-06 17:32:48.000000';
+--EXEC CategoryReport @StartDate = '2021-01-01 12:00:00.000000', @EndDate = '2021-01-02 12:00:00.000000';
 
-INSERT INTO StorageTransaction (ProductId, Amount, ReasonId) VALUES (3, -4, 1);
-INSERT INTO StorageTransaction (ProductId, Amount, ReasonId) VALUES (2, -3, 1);
-INSERT INTO StorageTransaction (ProductId, Amount, ReasonId) VALUES (5, -2, 1);
-INSERT INTO StorageTransaction (ProductId, Amount, ReasonId) VALUES (6, -1, 1);
-INSERT INTO StorageTransaction (ProductId, Amount, ReasonId) VALUES (7, 4, 2);
-INSERT INTO StorageTransaction (ProductId, Amount, ReasonId) VALUES (8, 3, 2);
-INSERT INTO StorageTransaction (ProductId, Amount, ReasonId) VALUES (9, 2, 2);
-INSERT INTO StorageTransaction (ProductId, Amount, ReasonId) VALUES (10, 1, 2);
-SELECT * FROM StorageTransaction;
+--INSERT INTO StorageTransaction (ProductId, Amount, ReasonId) VALUES (3, -4, 1);
+--INSERT INTO StorageTransaction (ProductId, Amount, ReasonId) VALUES (2, -3, 1);
+--INSERT INTO StorageTransaction (ProductId, Amount, ReasonId) VALUES (5, -2, 1);
+--INSERT INTO StorageTransaction (ProductId, Amount, ReasonId) VALUES (6, -1, 1);
+--INSERT INTO StorageTransaction (ProductId, Amount, ReasonId) VALUES (7, 4, 2);
+--INSERT INTO StorageTransaction (ProductId, Amount, ReasonId) VALUES (8, 3, 2);
+--INSERT INTO StorageTransaction (ProductId, Amount, ReasonId) VALUES (9, 2, 2);
+--INSERT INTO StorageTransaction (ProductId, Amount, ReasonId) VALUES (10, 1, 2);
+--SELECT * FROM StorageTransaction;
 
 -- TODO: DATEDIFF(second) är antagligen för finlirigt om man vill jämföra datum månader eller kanske år ifrån varandra.
 ----------------------------------------------------- Trigger för Transaction.
@@ -910,13 +940,3 @@ SELECT * FROM TransactionReason; */
 	-- Fulhack: Förutsätt att man endast hanterar en vara. Detta verkar vara det vi ska göra enligt texten?
 -- Vi måste göra en UPDATE Cart på det sista Id:t som lades till.
 -- Trigger då man drar ner (UPDATE) Cart till 0 varor för att ta bort varan.
-
-------------------------- SELECT:s for all tables:
-SELECT * FROM Category;
-SELECT * FROM Product;
-SELECT * FROM [Order];
-SELECT * FROM Costumer;
-SELECT * FROM Cart;
-SELECT * FROM Storage;
-SELECT * FROM StorageTransaction;
-SELECT * FROM TransactionReason;
