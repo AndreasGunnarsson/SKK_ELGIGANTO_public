@@ -221,6 +221,7 @@ INSERT INTO Storage (ProductId, Amount) VALUES
 INSERT INTO Costumer ([Name], Mail, [Address]) VALUES ('Boris', 'boris@mail.com', 'Borisgatan 2B');
 INSERT INTO Costumer ([Name], Mail, [Address]) VALUES ('Greger', 'greger@mail.com', 'Gregervägen 3C');
 INSERT INTO Costumer ([Name], Mail, [Address]) VALUES ('Klabbe', 'klabbe@klabbmail.com', 'Bollvägen 12A');
+GO
 
 ----------------------------------------------------- CreateNewCostumer SP:
 CREATE OR ALTER PROCEDURE CreateNewCostumer
@@ -428,7 +429,7 @@ END
 GO
 
 -- Test:
-EXEC AddToCart @CurrentUserId = 1, @ProductId = 4, @ProductAmount = 5;
+--EXEC AddToCart @CurrentUserId = 1, @ProductId = 4, @ProductAmount = 5;
 --SELECT * FROM Cart;
 --SELECT * FROM Product;
 -- TODO: Rename CurrentUserId to CurrentCostumerId.
@@ -456,13 +457,13 @@ END
 GO
 
 -- Test:
-EXEC ListCartContent @CurrentUserId = 1;
-EXEC AddToCart @CurrentUserId = 1, @ProductId = 1, @ProductAmount = 2;
-EXEC AddToCart @CurrentUserId = 2, @ProductId = 3, @ProductAmount = 3;
-EXEC AddToCart @CurrentUserId = 1, @ProductId = 2, @ProductAmount = 4;
-EXEC AddToCart @CurrentUserId = 2, @ProductId = 4, @ProductAmount = 5;
-SELECT * FROM Cart;
-SELECT * FROM Product;
+--EXEC ListCartContent @CurrentUserId = 1;
+--EXEC AddToCart @CurrentUserId = 1, @ProductId = 1, @ProductAmount = 2;
+--EXEC AddToCart @CurrentUserId = 2, @ProductId = 3, @ProductAmount = 3;
+--EXEC AddToCart @CurrentUserId = 1, @ProductId = 2, @ProductAmount = 4;
+--EXEC AddToCart @CurrentUserId = 2, @ProductId = 4, @ProductAmount = 5;
+--SELECT * FROM Cart;
+--SELECT * FROM Product;
 -- List the content in a cart with a specific Id.
 -- TODO: Skriv ut totala summan!
 ----------------------------------------------------- CheckoutCart SP:
