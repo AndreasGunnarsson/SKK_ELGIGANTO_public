@@ -45,24 +45,68 @@ SELECT * FROM Storage;
 SELECT * FROM StorageTransaction;
 SELECT * FROM TransactionReason;
 
------------------------------------------------------ Exec for all stored procedures:
+----------------------------------------------------- EXEC for all stored procedures:
 EXEC CreateNewCostumer @UserName = 'Turtle', @Email = 'turtle1@tmntmail.com', @Address = 'Kloak 4';
+	-- Skapar en ny användare.
+	-- Kräver att alla argument är ifyllda.
 EXEC UpdateCostumer @SelectedCostumerId = 2, @UpdatedName = 'Ninja', @UpdatedEmail = 'ninjaman@mail.com', @UpdatedAddress = 'Skuggatan 33F', @DeleteAccount = 0;
+	-- Uppdaterar informationen för en kund.
+	-- Det enda som krävs är att @SelectedCostumerId innehåller ett Id från Costumer.Id. Rekommenderat att man fyller i minst en av Update-argumenten annars händer inget.
+	-- @DeleteAccount är default 0, om det sätts till 1 tas kontot bort.
 EXEC ListProducts @SelectedCategoryId = 2, @RowsToSkip = 0, @RowsAmountToReturn = 5;
+	-- Listar produkter. Listan är sorterad efter produktens popularitet.
+	-- @SelectedCategoryId kräver ett Product.CategoryId (mellan 1 och 3).
+	-- @RowsToSkip och @RowsAmountToReturn har med pagination att göra.
 EXEC SearchProduct @SearchString = 'best', @CategoryId = 2, @IsAvailable = 1, @SortColumn = 1, @SortOrder = 1, @RowsToSkip = 0, @RowsAmountToReturn = 5;
+	-- Söker efter en specikfik vara.
+	-- @SearchString är den textsträng man vill söka efter (söker i Product.[Name]).
+	-- @CategoryId är den kategori man vill söka i (1, 2 och 3 finns). NULL = alla kategorier.
+	-- @IsAvailabel tar endast med de produkter som finns i lager om den är satt till 1. 0 = tar med allt.
+	-- @SortColumn 0 = Popularity, 2 = Price, 3 = Name.
+	-- @SortOrder 0 = ASC, 1 = DESC.
+	-- @RowsToSkip och @RowsAmountToReturn fyller samma funktion som i ListProducts-SP:n.
+	-- Man behöver inte använda några argument när man kallar på SearchProduct men rekommenderat är att iaf fylla i @SearchString.
 EXEC ProductDetail @SelectedProductId = 11;
+	-- Visar detaljer för en specifik vara. Lägger till 1 poäng i Product.PopularityScore.
+	-- Kräver att man fyller i ett Product.Id.
 EXEC AddToCart @CurrentUserId = 1, @ProductId = 4, @ProductAmount = 5;
+	-- Lägger till eller tar bort en vara från varukorgen. Lägger till/tar bort 5 poäng (Product.PopularityScore) per vara.
+	-- Kräver att alla argument är ifyllda.
+	-- @ProductAmount kan vara ett negativt värde.
+	-- @ProductId kan ta olika varor för samma @CurrentUserId.
 EXEC ListCartContent @CurrentUserId = 1;
+	-- Används av kund för att lista innehållet i varukorgen.
+	-- Kräver att @CurrentUserId är ifyllt med ett Id från Cart.CostumerId.
 EXEC CheckoutCart @CurrentUserId = 1;
+	-- Används av kund för att checka ut en varukorg. Skapar ett unikt Ordernumber och OrderId i [Order]. Lägger till 10 (Product.PopularityScore) poäng per vara.
+	-- Kräver att @CurrentUserId är ifyllt med ett Id från Cart.CostumerId.
 EXEC DeliverOrder @SelectedOrderId = 1;
+	-- Används av personal efter packad order för att uppdatera lagersaldo och ändra status till "Delivered" på en order. Skapar också en StorageTransaction.
+	-- Kräver att @SelectedOrderId är ifyllt med ett OrderId från [Order].
 EXEC ViewOrder @SelectedOrderId = 1;
+	-- För att kund ska kunna se vad kunden beställt och ifall ordern är levererad eller ej.
+	-- Kräver att @SelectedOrderId är ifyllt med ett OrderId från [Order].
 EXEC UpdateOrder @SelectedOrderId = 1, @SelectedProductId = 4, @ReturnAmount = 1;
+	-- Används av kund för att returnera varor. Skapar också en StorageTransaction.
+	-- Kräver att alla argument är ifyllda.
 EXEC StorageAdjustment @ProductId = 2, @NewAmount = -2, @IsIncDec = 1;
+	-- Används av personal för att ändra lagersaldo. Skapar också en StorageTransaction.
+	-- Kräver ett @ProductId och ett @NewAmount.
+	-- @IsIncDec kommer att göra en increment/decrement (beroende på ifall @NewAmount är positivt eller negativt). @IsIncDec 0 gör så att värdet i @NewAmount sätts till detta värde direkt.
 EXEC PopularityReport @CategoryId = 2, @ShowTop = 5;
+	-- Rappport som visar de populäraste produkterna.
+	-- @CategoryId kan vara NULL (default), 1, 2 eller 3. NULL tar med alla kategorier (lågt värde på @ShowTop limitera resultat i detta fall).
+	-- @ShowTop tar endast med de översta # raderna.
 EXEC ReturnReport @CategoryId = 3, @OrderBy = 1, @ShowTop = 5;
+	-- Rapport som visar antalet returer för en viss kategori.
+	-- Ifall @CategoryId är NULL så tas alla kategorier med. Kan annars vara ett värde mellan 1 och 3.
+	-- @OrderBy sorterar antingen efter antalet returer (0) eller den totala kostnaden för alla returer (1).
+	-- @ShowTop fyller samma funtion som i PopularityReport.
 EXEC CategoryReport @StartDate = '2021-01-01 12:00:00.000000', @EndDate = '2021-01-02 12:00:00.000000';
+	-- Rapport som visar försäljning och returer för alla kategorier inom ett visst datum.
+	-- @StartDate är datumet man vill börja att kolla ifrån och @EndDate slutdatumet. Default-värden är 24 timmar bakåt för @StartDate och nuvarande tid för @EndDate.
 
------------------------------------------------------ Create Tables:
+----------------------------------------------------- Create tables:
 CREATE TABLE Category
 (
 	Id int PRIMARY KEY IDENTITY(1,1),
@@ -277,8 +321,6 @@ GO
 -- https://stackoverflow.com/questions/6677517/update-if-different-changed
 -- TODO: Borde man ta bort alla Orders som har med ett account att göra ifall man tar bort kontot?
 
-
-
 ----------------------------------------------------- ListProducts SP:
 CREATE OR ALTER PROCEDURE ListProducts
 @SelectedCategoryId int,
@@ -372,6 +414,7 @@ GO
 -- Bonus: Uppdatera score beroende på senaste datumet som Scoren uppdaterades på? Verkligare scenario är att detta kanske körs en gång om dagen (nattid) för att uppdatera alla produkters score.
 	-- Använd en egen tabell för "globala variabler". Kan t.ex. spara LastPopularityUpdate och LastProductIdUpdated (för att användas i en StorageTransaction-trigger).
 	-- Detta borde göras i backend-klienten.
+
 ----------------------------------------------------- ProductDetail SP:
 CREATE OR ALTER PROCEDURE ProductDetail
 @SelectedProductId int
@@ -433,7 +476,7 @@ GO
 --SELECT * FROM Cart;
 --SELECT * FROM Product;
 -- TODO: Rename CurrentUserId to CurrentCostumerId.
--- TODO: Add a feature to remove the card instantly (withouh having to reach 0).
+-- TODO: Add a feature to remove the cart instantly (withouh having to reach 0).
 -- TODO: Borde kolla ifall Storage.Amount > 0.
 
 -- @CurrentUserId är ännu en sak man skulle vilja hantera som en "global variabel". Är därmed bättre att hantera i backend-klienten.
@@ -443,6 +486,7 @@ GO
 -- https://docs.microsoft.com/en-us/sql/relational-databases/in-memory-oltp/a-guide-to-query-processing-for-memory-optimized-tables?view=sql-server-ver15
 -- https://docs.microsoft.com/en-us/sql/relational-databases/in-memory-oltp/creating-natively-compiled-stored-procedures?view=sql-server-ver15
 -- Bättre prestanda och man kan sätta en parameter som "NOT NULL".
+
 ----------------------------------------------------- ListCartContent SP:
 CREATE OR ALTER PROCEDURE ListCartContent
 @CurrentUserId int
@@ -465,7 +509,7 @@ GO
 --SELECT * FROM Cart;
 --SELECT * FROM Product;
 -- List the content in a cart with a specific Id.
--- TODO: Skriv ut totala summan!
+
 ----------------------------------------------------- CheckoutCart SP:
 CREATE SEQUENCE OrderSequence
 	START WITH 1
@@ -536,8 +580,10 @@ GO
 -- TODO: Borde kolla ifall Storage.Amount > 0. Kan hämta att värdet ändrats under tiden som man gör saker. Kanske går att lägga en order men man borde iaf få en varning?
 -- TODO: Random-algoritmen är rätt dålig. Borde baseras på datum eller något för att minimera risken att duplicates uppstår. Datum, CostumerId + Random (4 siffror).
 -- TODO: borde returnera ordernummer eller Id?
+
 ----------------------------------------------------- Bonus: Undandled orders SP:
 -- Används av personalen för att hantera Ordrar som lagts.
+
 ----------------------------------------------------- NewTransaction SP:
 CREATE OR ALTER PROCEDURE NewTransaction
 @TransactionReason int,				-- 1 = Delivery, 2 = Return, 3 = Stock adjustment
@@ -713,6 +759,7 @@ GO
 -- Bonus: Ordernumber
 -- Visar för användaren statusen på ordern (delivered eller ej).
 -- Används också fö att skriva ut saker som är relevanta för UpdateOrder.
+
 ----------------------------------------------------- UpdateOrder SP:
 CREATE OR ALTER PROCEDURE UpdateOrder
 --@CurrentUserId int,
@@ -749,10 +796,12 @@ GO
 -- Man borde också kunna använda Ordernumber?
 -- Används ifall en kund vill returnera en vara.
 -- Går att uppdatera [Order].ReturnAmount med denna.
+
 ----------------------------------------------------- Bonus: AddRemoveProduct SP:
 -- Måste också hantera produkter som t.ex. ligger i Cart.
 -- Lägger till/tar bort en Product. Måste också ta bort dess Popularity i samma veva.
 -- Kan behöva en ON DELETE CASCADE på FK:n i tabeller här..
+
 ----------------------------------------------------- Bonus: UpdateProduct SP:
 -- Updaterar pris och description på en Product.
 -- Kan också lägga till en ny? Byt namn.
@@ -855,6 +904,7 @@ GO
 -- TODO: TotalCost är en rätt så ful kolumn.
 -- TODO: TOP 5 mest returnerade för vald kategori.
 -- Använd "window functions (ascoolt!, men utanför kursen), table functions, loopa i en SP och fylla på en tabellvariabel m.m." för att visa TOP 5 i för varje kategori i 
+
 ----------------------------------------------------- CategoryReport SP:
 CREATE OR ALTER PROCEDURE CategoryReport
 @StartDate datetime2 = NULL,		-- YYYY-MM-DD hh:mm:ss[.nnnnnnn]. If NULL it's set to -24h.
