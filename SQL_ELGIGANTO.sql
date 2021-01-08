@@ -87,7 +87,7 @@ EXEC ViewOrder @SelectedOrderId = 1;
 	-- För att kund ska kunna se vad kunden beställt och ifall ordern är levererad eller ej.
 	-- Kräver att @SelectedOrderId är ifyllt med ett OrderId från [Order].
 EXEC UpdateOrder @SelectedOrderId = 1, @SelectedProductId = 4, @ReturnAmount = 1;
-	-- Används av kund för att returnera varor. Skapar också en StorageTransaction.
+	-- Används av kund för att returnera varor. Ordern måste vara levererad ([Order].Delivered = 1). Skapar också en StorageTransaction.
 	-- Kräver att alla argument är ifyllda.
 EXEC StorageAdjustment @ProductId = 2, @NewAmount = -2, @IsIncDec = 1;
 	-- Används av personal för att ändra lagersaldo. Skapar också en StorageTransaction.
@@ -104,6 +104,7 @@ EXEC ReturnReport @CategoryId = 3, @OrderBy = 1, @ShowTop = 5;
 	-- @ShowTop fyller samma funtion som i PopularityReport.
 EXEC CategoryReport @StartDate = '2021-01-01 12:00:00.000000', @EndDate = '2021-01-02 12:00:00.000000';
 	-- Rapport som visar försäljning och returer för alla kategorier inom ett visst datum.
+	-- Notis: Den testdata som finns fungerar inte för att göra någon vettig rapport då alla transactions är skapade vid samma tidpunkt. Kräver StorageTransactions med ReasonId 1 (Delivery) och 2 (Return).
 	-- @StartDate är datumet man vill börja att kolla ifrån och @EndDate slutdatumet. Default-värden är 24 timmar bakåt för @StartDate och nuvarande tid för @EndDate.
 
 ----------------------------------------------------- Create tables:
@@ -235,6 +236,16 @@ ALTER TABLE Cart ADD CONSTRAINT FK_Cart_Product FOREIGN KEY (ProductId) REFERENC
 ALTER TABLE Storage ADD CONSTRAINT FK_Storage_Product FOREIGN KEY (ProductId) REFERENCES Product(Id);
 ALTER TABLE StorageTransaction ADD CONSTRAINT FK_StorageTrasaction_Product FOREIGN KEY (ProductId) REFERENCES Product(Id);
 ALTER TABLE StorageTransaction ADD CONSTRAINT FK_StorageTransaction_Reason FOREIGN KEY (ReasonId) REFERENCES TransactionReason(Id);
+
+----------------------------------------------------- Create non clustered indexes for all FK columns:
+CREATE NONCLUSTERED INDEX IX_Product_CategoryId ON Product(CategoryId);
+CREATE NONCLUSTERED INDEX IX_Order_ProductId ON [Order](ProductId);
+CREATE NONCLUSTERED INDEX IX_Order_CostumerId ON [Order](CostumerId);
+CREATE NONCLUSTERED INDEX IX_Cart_CostumerId ON Cart(CostumerId);
+CREATE NONCLUSTERED INDEX IX_Cart_ProductId ON Cart(ProductId);
+CREATE NONCLUSTERED INDEX IX_Storage_ProductId ON Storage(ProductId);
+CREATE NONCLUSTERED INDEX IX_StorageTransaction_ProductId ON StorageTransaction(ProductId);
+CREATE NONCLUSTERED INDEX IX_StorageTransaction_ReasonId ON StorageTransaction(ReasonId);
 --CREATE NONCLUSTERED INDEX IX_Product_Name ON Product([Name]);
 --DROP INDEX IX_Product_Name ON Product;
 
